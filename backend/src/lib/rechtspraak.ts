@@ -200,10 +200,10 @@ export async function searchLegislation(
     const max = Math.min(options.max ?? 5, 10);
     const params = new URLSearchParams({
         operation: "searchRetrieve",
+        version: "1.2",
         "x-connection": "BWB",
-        query: `title any "${query}" or text any "${query}"`,
+        query: `overheidbwb.titel any "${query}"`,
         maximumRecords: String(max),
-        recordSchema: "dcx",
     });
 
     const url = `${WETTEN_SRU_BASE}?${params.toString()}`;
@@ -222,17 +222,18 @@ export async function searchLegislation(
     while ((m = recordRe.exec(xml)) !== null) {
         const record = m[1];
         const title = decodeXml(
-            extractTag(record, "dcx:title") || extractTag(record, "dc:title"),
+            extractTag(record, "dcterms:title") ||
+            extractTag(record, "dc:title"),
         );
         if (!title) continue;
 
         const identifier = decodeXml(
-            extractTag(record, "dcx:identifier") ||
+            extractTag(record, "dcterms:identifier") ||
                 extractTag(record, "dc:identifier"),
         );
         const snippet = decodeXml(
             (
-                extractTag(record, "dcx:description") ||
+                extractTag(record, "dcterms:description") ||
                 extractTag(record, "dc:description")
             ).slice(0, 400),
         );
