@@ -347,14 +347,17 @@ export const LEGISLATION_TOOLS = [
         function: {
             name: "search_legislation",
             description:
-                "Search Dutch legislation (wetten en regelgeving) from wetten.overheid.nl. Use to find applicable laws, articles, and statutory provisions for a legal question.",
+                "Search Dutch legislation (wetten en regelgeving) by law title from wetten.overheid.nl. " +
+                "IMPORTANT: This searches law TITLES, not article content. Use the official law name, not a topic or article number. " +
+                "Examples: 'Burgerlijk Wetboek Boek 6' (for BW 6), 'Wetboek van Strafrecht', 'Arbeidsomstandighedenwet', 'Wet werk en zekerheid'. " +
+                "Do NOT search for 'onrechtmatige daad' — search for 'Burgerlijk Wetboek Boek 6' instead.",
             parameters: {
                 type: "object",
                 properties: {
                     query: {
                         type: "string",
                         description:
-                            "Search terms for Dutch legislation, e.g. 'arbeidsovereenkomst opzegging' or 'aansprakelijkheid Burgerlijk Wetboek'.",
+                            "The official name or abbreviation of the Dutch law, e.g. 'Burgerlijk Wetboek Boek 6', 'Wetboek van Koophandel', 'Arbeidstijdenwet'.",
                     },
                     max: {
                         type: "integer",
