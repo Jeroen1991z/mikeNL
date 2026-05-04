@@ -316,6 +316,7 @@ export function useAssistantChat({
             }));
 
             const model = message.model;
+            const rechtspraakEnabled = message.rechtspraakEnabled;
 
             const displayedDoc = opts?.displayedDoc ?? null;
 
@@ -345,12 +346,14 @@ export function useAssistantChat({
                           : undefined,
                       attached_documents:
                           attachedDocs.length > 0 ? attachedDocs : undefined,
+                      rechtspraak_enabled: rechtspraakEnabled,
                       signal: controller.signal,
                   })
                 : streamChat({
                       messages: apiMessages,
                       chat_id: chatId,
                       model,
+                      rechtspraak_enabled: rechtspraakEnabled,
                       signal: controller.signal,
                   }));
 
@@ -752,6 +755,50 @@ export function useAssistantChat({
                                     isStreaming: false,
                                 }),
                             );
+                            pushThinkingPlaceholder();
+                            continue;
+                        }
+
+                        if (data.type === "case_law_searched_start") {
+                            pushEvent({
+                                type: "case_law_searched_start",
+                                query: data.query as string,
+                                isStreaming: true,
+                            });
+                            continue;
+                        }
+
+                        if (data.type === "case_law_searched") {
+                            updateMatchingEvent(
+                                (e) =>
+                                    e.type === "case_law_searched_start" &&
+                                    !!e.isStreaming,
+                                () => ({
+                                    type: "case_law_searched" as const,
+                                    query: data.query as string,
+                                    count: (data.count as number) ?? 0,
+                                }),
+                            );
+                            pushThinkingPlaceholder();
+                            continue;
+                        }
+
+                        if (data.type === "case_law_fetched") {
+                            pushEvent({
+                                type: "case_law_fetched",
+                                ecli: data.ecli as string,
+                                title: (data.title as string) ?? data.ecli,
+                            });
+                            pushThinkingPlaceholder();
+                            continue;
+                        }
+
+                        if (data.type === "legislation_searched") {
+                            pushEvent({
+                                type: "legislation_searched",
+                                query: data.query as string,
+                                count: (data.count as number) ?? 0,
+                            });
                             pushThinkingPlaceholder();
                             continue;
                         }

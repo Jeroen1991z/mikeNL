@@ -14,6 +14,7 @@ import {
     FileText,
     FolderOpen,
     Library,
+    Scale,
     Square,
     X,
 } from "lucide-react";
@@ -66,6 +67,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
         title: string;
     } | null>(null);
     const [model, setModel] = useSelectedModel();
+    const [rechtspraakEnabled, setRechtspraakEnabled] = useState(true);
     const { profile } = useUserProfile();
     const apiKeys = {
         claudeApiKey: profile?.claudeApiKey ?? null,
@@ -139,6 +141,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
             files: files.length > 0 ? files : undefined,
             workflow: wf ?? undefined,
             model,
+            rechtspraakEnabled,
         });
     };
 
@@ -274,6 +277,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                         </div>
 
                         <div className="flex items-center gap-1">
+                            <button
+                                type="button"
+                                onClick={() => setRechtspraakEnabled((v) => !v)}
+                                aria-label={rechtspraakEnabled ? "Disable rechtspraak.nl lookup" : "Enable rechtspraak.nl lookup"}
+                                title={rechtspraakEnabled ? "Rechtspraak.nl lookup ON" : "Rechtspraak.nl lookup OFF"}
+                                className={`flex items-center gap-1.5 rounded-lg px-2 h-8 text-sm transition-colors ${rechtspraakEnabled ? "text-blue-600 hover:bg-blue-50" : "text-gray-400 hover:bg-gray-100 hover:text-gray-700"}`}
+                            >
+                                <Scale className="h-3.5 w-3.5" />
+                                <span className="hidden sm:inline text-xs">Rechtspraak</span>
+                            </button>
                             <ModelToggle
                                 value={model}
                                 onChange={setModel}

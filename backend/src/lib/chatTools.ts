@@ -5,6 +5,11 @@ import {
     storageKey,
     uploadFile,
 } from "./storage";
+import {
+    searchCaseLaw,
+    fetchCaseLaw,
+    searchLegislation,
+} from "./rechtspraak";
 import { convertedPdfKey } from "./convert";
 import { createServerSupabase } from "./supabase";
 import {
@@ -125,6 +130,37 @@ When a user message begins with a [Workflow: <title> (id: <id>)] marker, the use
 
 DOCUMENT NAMING IN PROSE:
 The chat-local labels ("doc-0", "doc-1", "doc-N", …) are internal handles for tool calls and citation JSON ONLY. NEVER write them in your prose response or in any text the user reads — not in body text, not in headings, not in lists, not in tool-activity descriptions. The user does not know what "doc-0" means and seeing it is jarring. When referring to a document in prose, always use its filename (e.g. "the NDA draft" or "nda_v1.docx"). This rule applies to every word streamed back to the user; the only places "doc-N" identifiers are allowed are inside tool-call arguments and inside the <CITATIONS> JSON block's "doc_id" field.
+
+DUTCH CASE LAW AND LEGISLATION (rechtspraak.nl / wetten.overheid.nl):
+You have access to the full Dutch jurisprudence database and legislation via tool calls.
+
+WHEN TO USE THESE TOOLS:
+- For any question that touches Dutch law, legal rights, obligations, procedures, or liability
+- When documents reference Dutch statutes, regulations, or case law you should verify
+- When the user asks about a specific Dutch legal topic without providing documents
+- DEFAULT: always search case law for substantive Dutch legal questions unless the user explicitly disables it
+
+SEARCH STRATEGY:
+1. Start with search_case_law using precise Dutch legal terms (e.g. "ontslag op staande voet dringende reden" or "onrechtmatige daad schadevergoeding")
+2. If a result looks highly relevant, call fetch_case_law with its ECLI to read the full judgment
+3. Call search_legislation to find the applicable statutory provisions
+4. Synthesise: cite both the relevant cases and the statutory text in your answer
+
+CITING CASE LAW AND LEGISLATION:
+Use the same [N] inline marker system as for documents. After your response, include case law and legislation entries in the <CITATIONS> block alongside any document citations:
+
+For case law:
+{"ref": N, "type": "case_law", "ecli": "ECLI:NL:HR:2020:1234", "title": "HR 1 januari 2020", "court": "Hoge Raad", "date": "2020-01-01", "quote": "exact relevant passage from the judgment"}
+
+For legislation:
+{"ref": N, "type": "legislation", "title": "Burgerlijk Wetboek", "article": "art. 7:610 BW", "url": "https://wetten.overheid.nl/BWBR0005290", "quote": "text of the relevant article or provision"}
+
+QUALITY STANDARDS (Harvey / Legora level):
+- Always cite primary sources; never state Dutch law from memory alone
+- Quote the exact passage that supports your claim; keep quotes concise (≤ 40 words)
+- Mention the highest applicable court (Hoge Raad preferred over lower courts when available)
+- When case law has evolved, note the most recent leading case
+- For legislation, cite the current consolidated version (wetten.overheid.nl)
 
 GENERAL GUIDANCE:
 - Be precise and professional
@@ -250,6 +286,78 @@ export const WORKFLOW_TOOLS = [
                     },
                 },
                 required: ["workflow_id"],
+            },
+        },
+    },
+];
+
+export const RECHTSPRAAK_TOOLS = [
+    {
+        type: "function",
+        function: {
+            name: "search_case_law",
+            description:
+                "Search Dutch court judgments (uitspraken) from rechtspraak.nl. Use for any question involving Dutch law, rights, obligations, liability, or procedures. Returns ECLI identifiers, court, date, and summary for matching cases.",
+            parameters: {
+                type: "object",
+                properties: {
+                    query: {
+                        type: "string",
+                        description:
+                            "Search terms in Dutch legal language, e.g. 'ontslag op staande voet dringende reden' or 'onrechtmatige daad schadevergoeding'.",
+                    },
+                    max: {
+                        type: "integer",
+                        description: "Maximum results to return (default 10, max 20).",
+                    },
+                    date_from: {
+                        type: "string",
+                        description: "Only return cases modified after this date (YYYY-MM-DD).",
+                    },
+                },
+                required: ["query"],
+            },
+        },
+    },
+    {
+        type: "function",
+        function: {
+            name: "fetch_case_law",
+            description:
+                "Fetch the full text of a specific Dutch court judgment by ECLI number. Call this after search_case_law when a case looks directly on point and you need the full reasoning.",
+            parameters: {
+                type: "object",
+                properties: {
+                    ecli: {
+                        type: "string",
+                        description:
+                            "The ECLI identifier of the judgment, e.g. 'ECLI:NL:HR:2020:1234'.",
+                    },
+                },
+                required: ["ecli"],
+            },
+        },
+    },
+    {
+        type: "function",
+        function: {
+            name: "search_legislation",
+            description:
+                "Search Dutch legislation (wetten en regelgeving) from wetten.overheid.nl. Use to find applicable laws, articles, and statutory provisions for a legal question.",
+            parameters: {
+                type: "object",
+                properties: {
+                    query: {
+                        type: "string",
+                        description:
+                            "Search terms for Dutch legislation, e.g. 'arbeidsovereenkomst opzegging' or 'aansprakelijkheid Burgerlijk Wetboek'.",
+                    },
+                    max: {
+                        type: "integer",
+                        description: "Maximum results to return (default 5, max 10).",
+                    },
+                },
+                required: ["query"],
             },
         },
     },
@@ -415,18 +523,46 @@ export const TOOLS = [
     },
 ];
 
-type ParsedCitation = {
-    ref: number;
-    doc_id: string;
-    page: number | string;
-    quote: string;
-};
+type ParsedCitation =
+    | { kind: "doc"; ref: number; doc_id: string; page: number | string; quote: string }
+    | { kind: "case_law"; ref: number; ecli: string; title?: string; court?: string; date?: string; quote: string; external_url: string }
+    | { kind: "legislation"; ref: number; title: string; article?: string; url?: string; quote: string };
 
 function normalizeCitation(raw: unknown): ParsedCitation | null {
     if (!raw || typeof raw !== "object") return null;
     const c = raw as Record<string, unknown>;
-    if (typeof c.ref !== "number" || typeof c.doc_id !== "string") return null;
+    if (typeof c.ref !== "number") return null;
     if (typeof c.quote !== "string" || !c.quote) return null;
+
+    if (c.type === "case_law") {
+        if (typeof c.ecli !== "string") return null;
+        const ecli = c.ecli as string;
+        return {
+            kind: "case_law",
+            ref: c.ref,
+            ecli,
+            title: typeof c.title === "string" ? c.title : undefined,
+            court: typeof c.court === "string" ? c.court : undefined,
+            date: typeof c.date === "string" ? c.date : undefined,
+            quote: c.quote,
+            external_url: `https://uitspraken.rechtspraak.nl/details?id=${encodeURIComponent(ecli)}`,
+        };
+    }
+
+    if (c.type === "legislation") {
+        if (typeof c.title !== "string") return null;
+        return {
+            kind: "legislation",
+            ref: c.ref,
+            title: c.title,
+            article: typeof c.article === "string" ? c.article : undefined,
+            url: typeof c.url === "string" ? c.url : undefined,
+            quote: c.quote,
+        };
+    }
+
+    // Default: document citation
+    if (typeof c.doc_id !== "string") return null;
     let page: number | string;
     if (typeof c.page === "number") {
         page = c.page;
@@ -437,7 +573,7 @@ function normalizeCitation(raw: unknown): ParsedCitation | null {
         if (!Number.isFinite(n)) return null;
         page = n;
     }
-    return { ref: c.ref, doc_id: c.doc_id, page, quote: c.quote };
+    return { kind: "doc", ref: c.ref, doc_id: c.doc_id, page, quote: c.quote };
 }
 
 // ---------------------------------------------------------------------------
@@ -1503,6 +1639,8 @@ export async function runToolCalls(
     docsReplicated: DocReplicatedResult[];
     workflowsApplied: { workflow_id: string; title: string }[];
     docsEdited: DocEditedResult[];
+    caseLawSearched: string[];
+    legislationSearched: string[];
 }> {
     const toolResults: unknown[] = [];
     const docsRead: { filename: string; document_id?: string }[] = [];
@@ -1515,6 +1653,8 @@ export async function runToolCalls(
     const docsReplicated: DocReplicatedResult[] = [];
     const workflowsApplied: { workflow_id: string; title: string }[] = [];
     const docsEdited: DocEditedResult[] = [];
+    const caseLawSearched: string[] = [];
+    const legislationSearched: string[] = [];
 
     for (const tc of toolCalls) {
         let args: Record<string, unknown> = {};
@@ -2195,6 +2335,62 @@ export async function runToolCalls(
                 tool_call_id: tc.id,
                 content: JSON.stringify(toolResultPayload),
             });
+        } else if (tc.function.name === "search_case_law") {
+            write(`data: ${JSON.stringify({ type: "case_law_searched_start", query: args.query })}\n\n`);
+            try {
+                const results = await searchCaseLaw(args.query as string, {
+                    max: (args.max as number | undefined) ?? 8,
+                    dateFrom: args.date_from as string | undefined,
+                });
+                caseLawSearched.push(...results.map((r) => r.ecli));
+                write(`data: ${JSON.stringify({ type: "case_law_searched", query: args.query, count: results.length })}\n\n`);
+                toolResults.push({
+                    role: "tool",
+                    tool_call_id: tc.id,
+                    content: JSON.stringify(results),
+                });
+            } catch (err) {
+                toolResults.push({
+                    role: "tool",
+                    tool_call_id: tc.id,
+                    content: JSON.stringify({ error: String(err) }),
+                });
+            }
+        } else if (tc.function.name === "fetch_case_law") {
+            try {
+                const detail = await fetchCaseLaw(args.ecli as string);
+                write(`data: ${JSON.stringify({ type: "case_law_fetched", ecli: detail.ecli, title: detail.title })}\n\n`);
+                toolResults.push({
+                    role: "tool",
+                    tool_call_id: tc.id,
+                    content: JSON.stringify(detail),
+                });
+            } catch (err) {
+                toolResults.push({
+                    role: "tool",
+                    tool_call_id: tc.id,
+                    content: JSON.stringify({ error: String(err) }),
+                });
+            }
+        } else if (tc.function.name === "search_legislation") {
+            try {
+                const results = await searchLegislation(args.query as string, {
+                    max: (args.max as number | undefined) ?? 5,
+                });
+                legislationSearched.push(...results.map((r) => r.title));
+                write(`data: ${JSON.stringify({ type: "legislation_searched", query: args.query, count: results.length })}\n\n`);
+                toolResults.push({
+                    role: "tool",
+                    tool_call_id: tc.id,
+                    content: JSON.stringify(results),
+                });
+            } catch (err) {
+                toolResults.push({
+                    role: "tool",
+                    tool_call_id: tc.id,
+                    content: JSON.stringify({ error: String(err) }),
+                });
+            }
         }
     }
 
@@ -2206,6 +2402,8 @@ export async function runToolCalls(
         docsReplicated,
         workflowsApplied,
         docsEdited,
+        caseLawSearched,
+        legislationSearched,
     };
 }
 
@@ -2291,6 +2489,10 @@ type AssistantEvent =
           download_url: string;
           annotations: EditAnnotation[];
       }
+    | { type: "case_law_searched_start"; query: string }
+    | { type: "case_law_searched"; query: string; count: number }
+    | { type: "case_law_fetched"; ecli: string; title: string }
+    | { type: "legislation_searched"; query: string; count: number }
     | { type: "content"; text: string };
 
 export async function runLLMStream(params: {
@@ -2312,11 +2514,15 @@ export async function runLLMStream(params: {
      * generated docs still get persisted, but as standalone documents.
      */
     projectId?: string | null;
+    rechtspraakEnabled?: boolean;
 }): Promise<{ fullText: string; events: AssistantEvent[] }> {
-    const { apiMessages, docStore, docIndex, userId, db, write, extraTools, workflowStore, tabularStore, buildCitations, model, apiKeys, projectId } = params;
-    const activeTools = extraTools?.length
-        ? [...TOOLS, ...WORKFLOW_TOOLS, ...extraTools]
+    const { apiMessages, docStore, docIndex, userId, db, write, extraTools, workflowStore, tabularStore, buildCitations, model, apiKeys, projectId, rechtspraakEnabled } = params;
+    const baseTools = rechtspraakEnabled !== false
+        ? [...TOOLS, ...WORKFLOW_TOOLS, ...RECHTSPRAAK_TOOLS]
         : [...TOOLS, ...WORKFLOW_TOOLS];
+    const activeTools = extraTools?.length
+        ? [...baseTools, ...extraTools]
+        : baseTools;
 
     // Extract system prompt; pass remaining turns to the adapter as
     // plain user/assistant messages.
@@ -2592,6 +2798,29 @@ export function extractAnnotations(
     events?: { type: string } & Record<string, unknown>[] | unknown[],
 ): unknown[] {
     const out: unknown[] = parseCitations(fullText).map((c) => {
+        if (c.kind === "case_law") {
+            return {
+                type: "case_law",
+                ref: c.ref,
+                ecli: c.ecli,
+                title: c.title,
+                court: c.court,
+                judgment_date: c.date,
+                quote: c.quote,
+                external_url: c.external_url,
+            };
+        }
+        if (c.kind === "legislation") {
+            return {
+                type: "legislation",
+                ref: c.ref,
+                title: c.title,
+                article: c.article,
+                quote: c.quote,
+                external_url: c.url,
+            };
+        }
+        // Document citation
         const docInfo = resolveDoc(c.doc_id, docIndex);
         return {
             type: "citation_data",
