@@ -104,7 +104,7 @@ export async function searchCaseLaw(
 ): Promise<CaseLawResult[]> {
     const max = Math.min(options.max ?? 10, 20);
     const params = new URLSearchParams({
-        subject: query,
+        zoekterm: query,
         max: String(max),
         return: "DOC",
         sort: "DESC",
