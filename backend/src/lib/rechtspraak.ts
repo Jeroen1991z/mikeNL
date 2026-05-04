@@ -217,33 +217,31 @@ export async function searchLegislation(
     const xml = await resp.text();
     const results: LegislationResult[] = [];
 
-    const recordRe = /<srw:record>([\s\S]*?)<\/srw:record>/g;
+    const recordRe = /<record[^>]*>([\s\S]*?)<\/record>/g;
+    const seen = new Set<string>();
     let m: RegExpExecArray | null;
     while ((m = recordRe.exec(xml)) !== null) {
         const record = m[1];
-        const title = decodeXml(
-            extractTag(record, "dcterms:title") ||
-            extractTag(record, "dc:title"),
-        );
+        const title = decodeXml(extractTag(record, "dcterms:title"));
         if (!title) continue;
 
-        const identifier = decodeXml(
-            extractTag(record, "dcterms:identifier") ||
-                extractTag(record, "dc:identifier"),
-        );
-        const snippet = decodeXml(
-            (
-                extractTag(record, "dcterms:description") ||
-                extractTag(record, "dc:description")
-            ).slice(0, 400),
-        );
+        const identifier = decodeXml(extractTag(record, "dcterms:identifier"));
+
+        // Use legal domain as snippet since BWB records have no description
+        const rechtsgebiedMatches: string[] = [];
+        const rgRe = /<overheidbwb:rechtsgebied[^>]*>([\s\S]*?)<\/overheidbwb:rechtsgebied>/g;
+        let rgm: RegExpExecArray | null;
+        while ((rgm = rgRe.exec(record)) !== null) {
+            rechtsgebiedMatches.push(decodeXml(rgm[1].trim()));
+        }
+        const snippet = rechtsgebiedMatches.join("; ");
 
         const bwbMatch = identifier.match(/BWBR\d+/);
         const bwb_id = bwbMatch ? bwbMatch[0] : "";
-        const wetsUrl = bwb_id
-            ? `https://wetten.overheid.nl/${bwb_id}`
-            : identifier;
+        if (!bwb_id || seen.has(bwb_id)) continue; // deduplicate versions
+        seen.add(bwb_id);
 
+        const wetsUrl = `https://wetten.overheid.nl/${bwb_id}`;
         results.push({ bwb_id, title, url: wetsUrl, snippet });
     }
 
