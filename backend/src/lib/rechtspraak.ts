@@ -1,9 +1,11 @@
 // Dutch case law and legislation API client.
 // rechtspraak.nl open data: no authentication required, max 10 req/sec.
 // wetten.overheid.nl: SRU search endpoint, no authentication required.
+// repository.overheid.nl/sru: SGD (Staten-Generaal Digitaal) for Memorie van Toelichting.
 
 const RECHTSPRAAK_BASE = "https://data.rechtspraak.nl/uitspraken";
 const WETTEN_SRU_BASE = "https://zoekservice.overheid.nl/sru/Search";
+const OVERHEID_SRU_BASE = "https://repository.overheid.nl/sru";
 
 export interface CaseLawResult {
     ecli: string;
@@ -243,6 +245,76 @@ export async function searchLegislation(
 
         const wetsUrl = `https://wetten.overheid.nl/${bwb_id}`;
         results.push({ bwb_id, title, url: wetsUrl, snippet });
+    }
+
+    return results;
+}
+
+// ---------------------------------------------------------------------------
+// Memorie van Toelichting — Staten-Generaal Digitaal (SGD)
+// ---------------------------------------------------------------------------
+
+export interface MvTResult {
+    title: string;
+    dossiernummer?: string;
+    date?: string;
+    url: string;
+    snippet: string;
+}
+
+export async function searchMvT(
+    query: string,
+    options: { max?: number } = {},
+): Promise<MvTResult[]> {
+    const max = Math.min(options.max ?? 5, 10);
+    const params = new URLSearchParams({
+        operation: "searchRetrieve",
+        version: "1.2",
+        "x-connection": "sgd",
+        query: `(dt.title any "${query}" OR dt.abstract any "${query}") AND c.product-area=sgd`,
+        maximumRecords: String(max),
+    });
+
+    const url = `${OVERHEID_SRU_BASE}?${params.toString()}`;
+    const resp = await fetch(url, {
+        signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) {
+        throw new Error(`Memorie van Toelichting search failed: HTTP ${resp.status}`);
+    }
+
+    const xml = await resp.text();
+    const results: MvTResult[] = [];
+
+    const recordRe = /<record[^>]*>([\s\S]*?)<\/record>/g;
+    let m: RegExpExecArray | null;
+    while ((m = recordRe.exec(xml)) !== null) {
+        const record = m[1];
+        const title = decodeXml(
+            extractTag(record, "dt:title") || extractTag(record, "dcterms:title"),
+        );
+        if (!title) continue;
+
+        const identifier = decodeXml(
+            extractTag(record, "dt:identifier") || extractTag(record, "dcterms:identifier"),
+        );
+        const snippet = decodeXml(
+            (extractTag(record, "dt:abstract") || extractTag(record, "dcterms:abstract")).slice(0, 400),
+        );
+        const date = (
+            extractTag(record, "dt:date") ||
+            extractTag(record, "dt:issued") ||
+            extractTag(record, "dcterms:date")
+        ).slice(0, 10);
+        const dossiernummer = extractTag(record, "w:dossiernummer");
+
+        results.push({
+            title,
+            dossiernummer: dossiernummer || undefined,
+            date: date || undefined,
+            url: identifier || "https://www.officielebekendmakingen.nl/",
+            snippet,
+        });
     }
 
     return results;

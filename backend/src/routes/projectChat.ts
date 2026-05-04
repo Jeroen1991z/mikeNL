@@ -29,7 +29,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
     const userEmail = res.locals.userEmail as string | undefined;
     const { projectId } = req.params;
-    const { messages, chat_id, model, displayed_doc, attached_documents, rechtspraak_enabled } =
+    const { messages, chat_id, model, displayed_doc, attached_documents, rechtspraak_enabled, search_sources } =
         req.body as {
             messages: ChatMessage[];
             chat_id?: string;
@@ -37,6 +37,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             displayed_doc?: { filename: string; document_id: string };
             attached_documents?: { filename: string; document_id: string }[];
             rechtspraak_enabled?: boolean;
+            search_sources?: { rechtspraak?: boolean; wetten?: boolean; mvt?: boolean; internet?: boolean };
         };
 
     const db = createServerSupabase();
@@ -171,6 +172,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             apiKeys,
             projectId,
             rechtspraakEnabled: rechtspraak_enabled !== false,
+            searchSources: search_sources,
         });
 
         const annotations = extractAnnotations(fullText, docIndex, events);

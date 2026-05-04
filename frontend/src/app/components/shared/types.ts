@@ -157,6 +157,14 @@ export interface MikeMessage {
   /** Set when streaming failed; rendered as a red error block. */
   error?: string;
   rechtspraakEnabled?: boolean;
+  searchSources?: SearchSources;
+}
+
+export interface SearchSources {
+  rechtspraak?: boolean;  // rechtspraak.nl case law, default true
+  wetten?: boolean;       // wetten.overheid.nl legislation, default true
+  mvt?: boolean;          // Memorie van Toelichting, default false
+  internet?: boolean;     // AI general knowledge, default true
 }
 
 export interface CitationQuote {
