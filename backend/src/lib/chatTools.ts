@@ -9,6 +9,7 @@ import {
     searchCaseLaw,
     fetchCaseLaw,
     searchLegislation,
+    fetchLegislationArticle,
     searchMvT,
 } from "./rechtspraak";
 import { convertedPdfKey } from "./convert";
@@ -342,6 +343,34 @@ export const CASE_LAW_TOOLS = [
 ];
 
 export const LEGISLATION_TOOLS = [
+    {
+        type: "function",
+        function: {
+            name: "fetch_legislation_article",
+            description:
+                "Fetch the text of a specific article from a Dutch law by its BWB identifier. " +
+                "Call this after search_legislation to read the actual article text. " +
+                "Example: fetch art. 6:162 BW → bwb_id='BWBR0005289', article_number='162'.",
+            parameters: {
+                type: "object",
+                properties: {
+                    bwb_id: {
+                        type: "string",
+                        description: "The BWB identifier of the law, e.g. 'BWBR0005289' for Burgerlijk Wetboek Boek 6.",
+                    },
+                    article_number: {
+                        type: "string",
+                        description: "The article number to retrieve, e.g. '162' for art. 6:162 BW.",
+                    },
+                    xml_url: {
+                        type: "string",
+                        description: "Optional: the xml_url from search_legislation results for the specific version.",
+                    },
+                },
+                required: ["bwb_id", "article_number"],
+            },
+        },
+    },
     {
         type: "function",
         function: {
@@ -2400,6 +2429,26 @@ export async function runToolCalls(
                     role: "tool",
                     tool_call_id: tc.id,
                     content: JSON.stringify(detail),
+                });
+            } catch (err) {
+                toolResults.push({
+                    role: "tool",
+                    tool_call_id: tc.id,
+                    content: JSON.stringify({ error: String(err) }),
+                });
+            }
+        } else if (tc.function.name === "fetch_legislation_article") {
+            try {
+                const result = await fetchLegislationArticle(
+                    args.bwb_id as string,
+                    args.article_number as string,
+                    args.xml_url as string | undefined,
+                );
+                write(`data: ${JSON.stringify({ type: "legislation_article_fetched", bwb_id: args.bwb_id, article: args.article_number })}\n\n`);
+                toolResults.push({
+                    role: "tool",
+                    tool_call_id: tc.id,
+                    content: JSON.stringify(result),
                 });
             } catch (err) {
                 toolResults.push({

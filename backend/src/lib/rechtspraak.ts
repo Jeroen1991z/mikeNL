@@ -30,6 +30,7 @@ export interface LegislationResult {
     title: string;
     url: string;
     snippet: string;
+    xml_url?: string;  // latest version XML for fetching article text
 }
 
 // ---------------------------------------------------------------------------
@@ -219,8 +220,14 @@ export async function searchLegislation(
     const xml = await resp.text();
     const results: LegislationResult[] = [];
 
+    // Collect all records per BWB ID, keeping metadata from first occurrence
+    // but updating xml_url to the latest version (highest geldigheidsperiode_startdatum).
+    const byBwbId = new Map<string, {
+        title: string; snippet: string;
+        latestDate: string; xml_url: string;
+    }>();
+
     const recordRe = /<record[^>]*>([\s\S]*?)<\/record>/g;
-    const seen = new Set<string>();
     let m: RegExpExecArray | null;
     while ((m = recordRe.exec(xml)) !== null) {
         const record = m[1];
@@ -228,8 +235,10 @@ export async function searchLegislation(
         if (!title) continue;
 
         const identifier = decodeXml(extractTag(record, "dcterms:identifier"));
+        const bwbMatch = identifier.match(/BWBR\d+/);
+        const bwb_id = bwbMatch ? bwbMatch[0] : "";
+        if (!bwb_id) continue;
 
-        // Use legal domain as snippet since BWB records have no description
         const rechtsgebiedMatches: string[] = [];
         const rgRe = /<overheidbwb:rechtsgebied[^>]*>([\s\S]*?)<\/overheidbwb:rechtsgebied>/g;
         let rgm: RegExpExecArray | null;
@@ -237,17 +246,111 @@ export async function searchLegislation(
             rechtsgebiedMatches.push(decodeXml(rgm[1].trim()));
         }
         const snippet = rechtsgebiedMatches.join("; ");
+        const startDate = extractTag(record, "overheidbwb:geldigheidsperiode_startdatum").slice(0, 10);
+        const xmlUrl = extractTag(record, "overheidbwb:locatie_toestand");
 
-        const bwbMatch = identifier.match(/BWBR\d+/);
-        const bwb_id = bwbMatch ? bwbMatch[0] : "";
-        if (!bwb_id || seen.has(bwb_id)) continue; // deduplicate versions
-        seen.add(bwb_id);
+        const existing = byBwbId.get(bwb_id);
+        if (!existing) {
+            byBwbId.set(bwb_id, { title, snippet, latestDate: startDate, xml_url: xmlUrl });
+        } else if (startDate > existing.latestDate && xmlUrl) {
+            existing.latestDate = startDate;
+            existing.xml_url = xmlUrl;
+        }
+    }
 
+    for (const [bwb_id, { title, snippet, xml_url }] of byBwbId) {
         const wetsUrl = `https://wetten.overheid.nl/${bwb_id}`;
-        results.push({ bwb_id, title, url: wetsUrl, snippet });
+        results.push({ bwb_id, title, url: wetsUrl, snippet, xml_url: xml_url || undefined });
     }
 
     return results;
+}
+
+// ---------------------------------------------------------------------------
+// Legislation full-text fetch — BWB XML article extraction
+// ---------------------------------------------------------------------------
+
+export async function fetchLegislationArticle(
+    bwb_id: string,
+    article_number: string,
+    xml_url?: string,
+): Promise<{ bwb_id: string; article: string; text: string; url: string }> {
+    // Try manifest to get latest version XML URL
+    let targetUrl = xml_url ?? "";
+    if (!targetUrl) {
+        const manifestUrl = `https://repository.officiele-overheidspublicaties.nl/bwb/${bwb_id}/manifest.xml`;
+        try {
+            const mResp = await fetch(manifestUrl, { signal: AbortSignal.timeout(10_000) });
+            if (mResp.ok) {
+                const mXml = await mResp.text();
+                // Find entries with einddatum 9999 (currently valid) and pick the latest
+                const entries: { date: string; file: string }[] = [];
+                const entryRe = /<ns2:Uitwisselingsbestand[^>]*>([\s\S]*?)<\/ns2:Uitwisselingsbestand>/g;
+                let em: RegExpExecArray | null;
+                while ((em = entryRe.exec(mXml)) !== null) {
+                    const entry = em[1];
+                    const eind = extractTag(entry, "ns2:GeldigTot") || extractTag(entry, "GeldigTot");
+                    if (!eind.startsWith("9999")) continue;
+                    const vanaf = extractTag(entry, "ns2:GeldigVanaf") || extractTag(entry, "GeldigVanaf");
+                    const naam = extractTag(entry, "ns2:Naam") || extractTag(entry, "Naam");
+                    if (naam) entries.push({ date: vanaf, file: naam });
+                }
+                if (entries.length > 0) {
+                    entries.sort((a, b) => b.date.localeCompare(a.date));
+                    const file = entries[0].file;
+                    const dateKey = file.replace(`${bwb_id}_`, "").replace(".xml", "");
+                    targetUrl = `https://repository.officiele-overheidspublicaties.nl/bwb/${bwb_id}/${dateKey}/xml/${file}`;
+                }
+            }
+        } catch {
+            // fall through to wetten.overheid.nl approach
+        }
+    }
+
+    // Fetch the XML (or fall back to wetten.overheid.nl HTML)
+    let lawText = "";
+    if (targetUrl) {
+        try {
+            const resp = await fetch(targetUrl, { signal: AbortSignal.timeout(20_000) });
+            if (resp.ok) lawText = await resp.text();
+        } catch {
+            // fall through
+        }
+    }
+    if (!lawText) {
+        const today = new Date().toISOString().slice(0, 10);
+        const htmlResp = await fetch(`https://wetten.overheid.nl/${bwb_id}/${today}`, {
+            signal: AbortSignal.timeout(20_000),
+        });
+        if (!htmlResp.ok) throw new Error(`Could not fetch ${bwb_id}: HTTP ${htmlResp.status}`);
+        lawText = await htmlResp.text();
+    }
+
+    // Strip tags to plain text for article extraction
+    const plain = stripTags(lawText).replace(/\s+/g, " ");
+
+    // Search for the article by number
+    const patterns = [
+        new RegExp(`Artikel\\s+${article_number}\\b([\\s\\S]{0,4000})`, "i"),
+        new RegExp(`Art\\.\\s*${article_number}\\b([\\s\\S]{0,4000})`, "i"),
+    ];
+    for (const re of patterns) {
+        const match = plain.match(re);
+        if (match) {
+            // Trim at next article boundary
+            const raw = match[1];
+            const nextArticle = raw.search(/\bArtikel\s+\d/i);
+            const articleText = nextArticle > 100 ? raw.slice(0, nextArticle).trim() : raw.trim();
+            return {
+                bwb_id,
+                article: article_number,
+                text: `Artikel ${article_number}\n${articleText.slice(0, 3000)}`,
+                url: `https://wetten.overheid.nl/${bwb_id}#Artikel${article_number}`,
+            };
+        }
+    }
+
+    throw new Error(`Artikel ${article_number} niet gevonden in ${bwb_id}`);
 }
 
 // ---------------------------------------------------------------------------
