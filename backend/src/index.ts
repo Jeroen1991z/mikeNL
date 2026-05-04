@@ -34,6 +34,22 @@ app.use("/download", downloadsRouter);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
+// Global error handler — catches unhandled async errors from route handlers
+app.use(
+  (
+    err: unknown,
+    _req: express.Request,
+    res: express.Response,
+    _next: express.NextFunction,
+  ) => {
+    console.error("[unhandled error]", err);
+    res.status(500).json({ detail: String(err) });
+  },
+);
+
 app.listen(PORT, () => {
   console.log(`Mike backend running on port ${PORT}`);
+  console.log(`  SUPABASE_URL: ${process.env.SUPABASE_URL ? "set" : "MISSING"}`);
+  console.log(`  SUPABASE_SECRET_KEY: ${process.env.SUPABASE_SECRET_KEY ? "set (starts with " + (process.env.SUPABASE_SECRET_KEY ?? "").slice(0, 10) + "...)" : "MISSING"}`);
+  console.log(`  FRONTEND_URL: ${process.env.FRONTEND_URL ?? "(not set)"}`);
 });
