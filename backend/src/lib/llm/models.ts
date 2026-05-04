@@ -19,9 +19,9 @@ export const GEMINI_MID_MODELS = ["gemini-3-flash-preview"] as const;
 export const CLAUDE_LOW_MODELS = ["claude-haiku-4-5"] as const;
 export const GEMINI_LOW_MODELS = ["gemini-3.1-flash-lite-preview"] as const;
 
-export const DEFAULT_MAIN_MODEL = "gemini-3-flash-preview";
-export const DEFAULT_TITLE_MODEL = "gemini-3.1-flash-lite-preview";
-export const DEFAULT_TABULAR_MODEL = "gemini-3-flash-preview";
+export const DEFAULT_MAIN_MODEL = "claude-sonnet-4-6";
+export const DEFAULT_TITLE_MODEL = "claude-haiku-4-5";
+export const DEFAULT_TABULAR_MODEL = "claude-sonnet-4-6";
 
 const ALL_MODELS = new Set<string>([
     ...CLAUDE_MAIN_MODELS,

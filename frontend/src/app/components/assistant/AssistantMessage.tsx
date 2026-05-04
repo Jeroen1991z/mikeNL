@@ -1336,6 +1336,57 @@ export function AssistantMessage({
                 />
             );
         }
+        if (
+            event.type === "case_law_searched_start" ||
+            event.type === "case_law_searched"
+        ) {
+            const isStreaming = event.type === "case_law_searched_start" || !!("isStreaming" in event && event.isStreaming);
+            const count = event.type === "case_law_searched" ? event.count : undefined;
+            return (
+                <div key={globalIdx} className="flex items-start text-sm font-serif text-gray-500 relative">
+                    {showConnector && (
+                        <div className="absolute bottom-0 w-[1px] bg-gray-300 top-[13px] left-[2.5px] h-[calc(100%+11px)]" />
+                    )}
+                    {isStreaming ? (
+                        <div className="mt-2 w-1.5 h-1.5 rounded-full border border-gray-400 border-t-transparent animate-spin shrink-0" />
+                    ) : (
+                        <div className="mt-2 w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                    )}
+                    <div className="ml-2 min-w-0 flex-1 whitespace-normal break-words">
+                        <span className="font-medium">{isStreaming ? "Searching" : "Searched"}</span>{" "}
+                        <span>rechtspraak.nl for &ldquo;{event.query}&rdquo;{!isStreaming && count !== undefined ? ` (${count} ${count === 1 ? "result" : "results"})` : isStreaming ? "..." : ""}</span>
+                    </div>
+                </div>
+            );
+        }
+        if (event.type === "case_law_fetched") {
+            return (
+                <div key={globalIdx} className="flex items-start text-sm font-serif text-gray-500 relative">
+                    {showConnector && (
+                        <div className="absolute bottom-0 w-[1px] bg-gray-300 top-[13px] left-[2.5px] h-[calc(100%+11px)]" />
+                    )}
+                    <div className="mt-2 w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                    <div className="ml-2 min-w-0 flex-1 whitespace-normal break-words">
+                        <span className="font-medium">Read</span>{" "}
+                        <span>{event.title || event.ecli}</span>
+                    </div>
+                </div>
+            );
+        }
+        if (event.type === "legislation_searched") {
+            return (
+                <div key={globalIdx} className="flex items-start text-sm font-serif text-gray-500 relative">
+                    {showConnector && (
+                        <div className="absolute bottom-0 w-[1px] bg-gray-300 top-[13px] left-[2.5px] h-[calc(100%+11px)]" />
+                    )}
+                    <div className="mt-2 w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                    <div className="ml-2 min-w-0 flex-1 whitespace-normal break-words">
+                        <span className="font-medium">Searched</span>{" "}
+                        <span>wetten.overheid.nl for &ldquo;{event.query}&rdquo; ({event.count} {event.count === 1 ? "result" : "results"})</span>
+                    </div>
+                </div>
+            );
+        }
         return null;
     };
 

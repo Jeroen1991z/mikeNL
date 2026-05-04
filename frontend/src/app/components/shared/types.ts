@@ -140,6 +140,10 @@ export type AssistantEvent =
         error?: string;
         isStreaming?: boolean;
     }
+  | { type: "case_law_searched_start"; query: string; isStreaming?: boolean }
+  | { type: "case_law_searched"; query: string; count: number; isStreaming?: boolean }
+  | { type: "case_law_fetched"; ecli: string; title: string; isStreaming?: boolean }
+  | { type: "legislation_searched"; query: string; count: number; isStreaming?: boolean }
   | { type: "content"; text: string; isStreaming?: boolean };
 
 export interface MikeMessage {
@@ -152,6 +156,7 @@ export interface MikeMessage {
   events?: AssistantEvent[];
   /** Set when streaming failed; rendered as a red error block. */
   error?: string;
+  rechtspraakEnabled?: boolean;
 }
 
 export interface CitationQuote {
@@ -167,15 +172,27 @@ export interface CitationQuote {
  * break point (text before is on page 41, text after is on page 42).
  */
 export interface MikeCitationAnnotation {
-  type: "citation_data";
+  type: "citation_data" | "case_law" | "legislation";
   ref: number;
-  doc_id: string;
-  document_id: string;
+  doc_id?: string;
+  document_id?: string;
   version_id?: string | null;
   version_number?: number | null;
-  filename: string;
-  page: number | string;
+  filename?: string;
+  page?: number | string;
   quote: string;
+  /** Case law — ECLI identifier */
+  ecli?: string;
+  /** Case law / legislation — external URL to open in new tab */
+  external_url?: string;
+  /** Case law — court name */
+  court?: string;
+  /** Case law — judgment date (YYYY-MM-DD) */
+  judgment_date?: string;
+  /** Case law / legislation — display title */
+  title?: string;
+  /** Legislation — article reference */
+  article?: string;
 }
 
 const PAGE_BREAK_SENTINEL = "[[PAGE_BREAK]]";

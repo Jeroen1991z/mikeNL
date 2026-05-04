@@ -132,11 +132,15 @@ export function ChatView({
      */
     const openCitation = useCallback(
         (citation: MikeCitationAnnotation) => {
+            if (citation.external_url) {
+                window.open(citation.external_url, "_blank", "noopener,noreferrer");
+                return;
+            }
             upsertTab({
                 kind: "citation",
-                id: citation.document_id,
-                documentId: citation.document_id,
-                filename: citation.filename,
+                id: citation.document_id ?? "",
+                documentId: citation.document_id ?? "",
+                filename: citation.filename ?? "",
                 versionId: citation.version_id ?? null,
                 versionNumber: citation.version_number ?? null,
                 citation,
