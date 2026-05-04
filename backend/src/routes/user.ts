@@ -14,7 +14,10 @@ userRouter.post("/profile", requireAuth, async (req, res) => {
       { user_id: userId },
       { onConflict: "user_id", ignoreDuplicates: true },
     );
-  if (error) return void res.status(500).json({ detail: error.message });
+  if (error) {
+    console.error("[user/profile] upsert error:", error.message, error);
+    return void res.status(500).json({ detail: error.message });
+  }
   res.json({ ok: true });
 });
 

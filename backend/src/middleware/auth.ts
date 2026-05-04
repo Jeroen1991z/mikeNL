@@ -24,8 +24,9 @@ export async function requireAuth(
   const admin = createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false },
   });
-  const { data } = await admin.auth.getUser(token);
+  const { data, error: authError } = await admin.auth.getUser(token);
   if (!data.user) {
+    console.error("[auth] getUser failed:", authError?.message ?? "no user returned");
     res.status(401).json({ detail: "Invalid or expired token" });
     return;
   }

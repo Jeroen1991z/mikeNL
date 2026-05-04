@@ -25,7 +25,10 @@ projectsRouter.get("/", requireAuth, async (req, res) => {
     .select("*")
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
-  if (ownError) return void res.status(500).json({ detail: ownError.message });
+  if (ownError) {
+    console.error("[projects] query error:", ownError.message, ownError);
+    return void res.status(500).json({ detail: ownError.message });
+  }
 
   const { data: sharedProjects, error: sharedError } = userEmail
     ? await db
