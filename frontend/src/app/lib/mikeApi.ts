@@ -431,6 +431,7 @@ export async function streamChat(payload: {
     project_id?: string;
     model?: string;
     rechtspraak_enabled?: boolean;
+    search_sources?: { rechtspraak?: boolean; wetten?: boolean; mvt?: boolean; internet?: boolean };
     signal?: AbortSignal;
 }): Promise<Response> {
     const { signal, ...body } = payload;
@@ -462,6 +463,7 @@ export async function streamProjectChat(payload: {
     displayed_doc?: { filename: string; document_id: string };
     attached_documents?: { filename: string; document_id: string }[];
     rechtspraak_enabled?: boolean;
+    search_sources?: { rechtspraak?: boolean; wetten?: boolean; mvt?: boolean; internet?: boolean };
     signal?: AbortSignal;
 }): Promise<Response> {
     const { projectId, signal, ...body } = payload;

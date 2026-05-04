@@ -317,6 +317,7 @@ export function useAssistantChat({
 
             const model = message.model;
             const rechtspraakEnabled = message.rechtspraakEnabled;
+            const searchSources = message.searchSources;
 
             const displayedDoc = opts?.displayedDoc ?? null;
 
@@ -347,6 +348,7 @@ export function useAssistantChat({
                       attached_documents:
                           attachedDocs.length > 0 ? attachedDocs : undefined,
                       rechtspraak_enabled: rechtspraakEnabled,
+                      search_sources: searchSources,
                       signal: controller.signal,
                   })
                 : streamChat({
@@ -354,6 +356,7 @@ export function useAssistantChat({
                       chat_id: chatId,
                       model,
                       rechtspraak_enabled: rechtspraakEnabled,
+                      search_sources: searchSources,
                       signal: controller.signal,
                   }));
 

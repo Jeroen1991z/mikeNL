@@ -316,12 +316,13 @@ chatRouter.post("/:chatId/generate-title", requireAuth, async (req, res) => {
 // POST /chat — streaming
 chatRouter.post("/", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
-    const { messages, chat_id, project_id, model, rechtspraak_enabled } = req.body as {
+    const { messages, chat_id, project_id, model, rechtspraak_enabled, search_sources } = req.body as {
         messages: ChatMessage[];
         chat_id?: string;
         project_id?: string;
         model?: string;
         rechtspraak_enabled?: boolean;
+        search_sources?: { rechtspraak?: boolean; wetten?: boolean; mvt?: boolean; internet?: boolean };
     };
 
     console.log("[chat/stream] incoming request", {
@@ -452,6 +453,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             apiKeys,
             projectId: project_id ?? null,
             rechtspraakEnabled: rechtspraak_enabled !== false,
+            searchSources: search_sources,
         });
 
         console.log("[chat/stream] LLM stream finished", {
