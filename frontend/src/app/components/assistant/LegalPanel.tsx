@@ -52,24 +52,46 @@ export function LegalPanel({ citation }: Props) {
     const [error, setError] = useState<string | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
-    // Reset when citation changes; auto-load legislation immediately (articles are short)
+    // Reset state and auto-load legislation whenever the citation changes.
+    // Legislation is auto-loaded here (inline async) to avoid stale-closure
+    // issues with a separate effect that reads fullText/error from prior render.
     useEffect(() => {
         setFullText(null);
         setError(null);
-        if (citation.type === "legislation") {
-            setLoading(true);
-        } else {
-            setLoading(false);
-        }
-    }, [citation.ecli, citation.article, citation.type]);
 
-    // Auto-load for legislation
-    useEffect(() => {
-        if (citation.type === "legislation" && !fullText && !error) {
-            loadFullText();
+        if (citation.type !== "legislation") {
+            setLoading(false);
+            return;
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [citation.ecli, citation.article, citation.type]);
+
+        setLoading(true);
+        let cancelled = false;
+
+        const bwbMatch = citation.external_url?.match(/BWBR\d+/);
+        const bwbId = bwbMatch?.[0];
+        const articleNum =
+            citation.article?.match(/[\d:]+(?:\s*lid\s*\d+)?/)?.[0]?.trim() ?? "";
+
+        if (!bwbId || !articleNum) {
+            setError("Onvoldoende gegevens om artikel op te halen");
+            setLoading(false);
+            return;
+        }
+
+        fetchLegalArticle(bwbId, articleNum, citation.xml_url)
+            .then((detail) => {
+                if (!cancelled) setFullText(detail.text);
+            })
+            .catch((e: unknown) => {
+                if (!cancelled) setError(String(e));
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+
+        return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [citation.ecli, citation.article, citation.type, citation.external_url, citation.xml_url]);
 
     // Scroll to the <mark> element after ReactMarkdown renders it
     useEffect(() => {
@@ -81,21 +103,14 @@ export function LegalPanel({ citation }: Props) {
         return () => clearTimeout(timer);
     }, [fullText]);
 
-    const loadFullText = async () => {
+    // Manual load for case law (triggered by the button).
+    const loadCaseLaw = async () => {
+        if (!citation.ecli) return;
         setLoading(true);
         setError(null);
         try {
-            if (citation.type === "case_law" && citation.ecli) {
-                const detail = await fetchLegalCase(citation.ecli);
-                setFullText(detail.text);
-            } else if (citation.type === "legislation") {
-                const bwbMatch = citation.external_url?.match(/BWBR\d+/);
-                const bwbId = bwbMatch?.[0];
-                const articleNum = citation.article?.match(/[\d:]+(?:\s*lid\s*\d+)?/)?.[0]?.trim() ?? "";
-                if (!bwbId || !articleNum) throw new Error("Onvoldoende gegevens om artikel op te halen");
-                const detail = await fetchLegalArticle(bwbId, articleNum, citation.xml_url);
-                setFullText(detail.text);
-            }
+            const detail = await fetchLegalCase(citation.ecli);
+            setFullText(detail.text);
         } catch (e) {
             setError(String(e));
         } finally {
@@ -176,7 +191,7 @@ export function LegalPanel({ citation }: Props) {
                     <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
                         <button
                             type="button"
-                            onClick={loadFullText}
+                            onClick={loadCaseLaw}
                             className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
                         >
                             {loadLabel}
@@ -199,7 +214,7 @@ export function LegalPanel({ citation }: Props) {
                         <p className="text-sm text-red-600">{error}</p>
                         <button
                             type="button"
-                            onClick={loadFullText}
+                            onClick={loadCaseLaw}
                             className="text-xs text-blue-600 hover:underline"
                         >
                             Opnieuw proberen
