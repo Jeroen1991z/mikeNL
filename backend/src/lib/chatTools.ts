@@ -10,7 +10,6 @@ import {
     fetchCaseLaw,
     searchLegislation,
     fetchLegislationArticle,
-    searchMvT,
 } from "./rechtspraak";
 import { convertedPdfKey } from "./convert";
 import { createServerSupabase } from "./supabase";
@@ -2476,25 +2475,6 @@ export async function runToolCalls(
                     content: JSON.stringify({ error: String(err) }),
                 });
             }
-        } else if (tc.function.name === "search_mvt") {
-            write(`data: ${JSON.stringify({ type: "mvt_searched_start", query: args.query })}\n\n`);
-            try {
-                const results = await searchMvT(args.query as string, {
-                    max: (args.max as number | undefined) ?? 5,
-                });
-                write(`data: ${JSON.stringify({ type: "mvt_searched", query: args.query, count: results.length })}\n\n`);
-                toolResults.push({
-                    role: "tool",
-                    tool_call_id: tc.id,
-                    content: JSON.stringify(results),
-                });
-            } catch (err) {
-                toolResults.push({
-                    role: "tool",
-                    tool_call_id: tc.id,
-                    content: JSON.stringify({ error: String(err) }),
-                });
-            }
         }
     }
 
@@ -2622,8 +2602,6 @@ export async function runLLMStream(params: {
     searchSources?: {
         rechtspraak?: boolean;
         wetten?: boolean;
-        mvt?: boolean;
-        internet?: boolean;
     };
 }): Promise<{ fullText: string; events: AssistantEvent[] }> {
     const { apiMessages, docStore, docIndex, userId, db, write, extraTools, workflowStore, tabularStore, buildCitations, model, apiKeys, projectId, rechtspraakEnabled, searchSources } = params;
@@ -2633,8 +2611,6 @@ export async function runLLMStream(params: {
     const sources = searchSources ?? {
         rechtspraak: rechtspraakEnabled !== false,
         wetten: rechtspraakEnabled !== false,
-        mvt: false,
-        internet: true,
     };
 
     const baseTools = [
@@ -2642,7 +2618,6 @@ export async function runLLMStream(params: {
         ...WORKFLOW_TOOLS,
         ...(sources.rechtspraak !== false ? CASE_LAW_TOOLS : []),
         ...(sources.wetten !== false ? LEGISLATION_TOOLS : []),
-        ...(sources.mvt === true ? MVT_TOOLS : []),
     ];
     const activeTools = extraTools?.length
         ? [...baseTools, ...extraTools]
@@ -2654,16 +2629,6 @@ export async function runLLMStream(params: {
     let systemPrompt =
         rawMsgs[0]?.role === "system" ? (rawMsgs[0].content ?? "") : "";
 
-    // When the user has disabled general internet/AI knowledge, instruct the
-    // model to rely exclusively on results from the enabled search tools.
-    if (sources.internet === false) {
-        systemPrompt +=
-            "\n\nBELANGRIJK: De gebruiker heeft algemene AI-kennisgebruik uitgeschakeld. " +
-            "Gebruik UITSLUITEND informatie die u heeft opgehaald via de beschikbare zoektools " +
-            "(rechtspraak.nl, wetten.overheid.nl, Memorie van Toelichting). " +
-            "Gebruik uw algemene trainingskennis NIET als bron voor juridisch inhoudelijke uitspraken. " +
-            "Vermeld altijd de specifieke bron (ECLI, wet, dossiernummer) voor elke juridische stelling.";
-    }
     console.log(
         "[runLLMStream] system prompt:\n" +
             "─".repeat(80) +
