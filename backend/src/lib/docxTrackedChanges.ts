@@ -710,11 +710,107 @@ function maxTrackedId(doc: XNode[]): number {
 }
 
 /**
+ * Render one paragraph as a string with inline redline markers:
+ *   {++inserted text++}  — w:ins runs
+ *   {--deleted text--}   — w:del / w:delText runs
+ *   {>>by AUTHOR: text<<} — comment references looked up in commentsMap
+ */
+function renderParagraphRedline(
+    paraChildren: XNode[],
+    commentsMap: Map<string, { author: string; text: string }>,
+): string {
+    let out = "";
+
+    const extractText = (nodes: XNode[], textTag: "w:t" | "w:delText"): string => {
+        let s = "";
+        for (const n of nodes) {
+            const name = elName(n);
+            if (name === textTag) {
+                for (const k of elChildren(n)) {
+                    if (isTextNode(k)) s += String(k[TEXT_KEY] ?? "");
+                }
+            } else if (name) {
+                s += extractText(elChildren(n), textTag);
+            }
+        }
+        return s;
+    };
+
+    const processRun = (rEl: XNode): string => {
+        let runOut = "";
+        for (const rk of elChildren(rEl)) {
+            const name = elName(rk);
+            if (name === "w:t") {
+                for (const k of elChildren(rk)) {
+                    if (isTextNode(k)) runOut += String(k[TEXT_KEY] ?? "");
+                }
+            } else if (name === "w:commentReference") {
+                const attrs = elAttrs(rk);
+                const commentId = String(attrs["@_w:id"] ?? "");
+                const comment = commentsMap.get(commentId);
+                if (comment) {
+                    runOut += `{>>by ${comment.author}: ${comment.text}<<}`;
+                }
+            }
+        }
+        return runOut;
+    };
+
+    const processChildren = (nodes: XNode[]): string => {
+        let s = "";
+        for (const n of nodes) {
+            const name = elName(n);
+            if (!name) continue;
+            if (name === "w:r") {
+                s += processRun(n);
+            } else if (name === "w:ins") {
+                const insText = extractText(elChildren(n), "w:t");
+                if (insText) s += `{++${insText}++}`;
+                // Also process comment references inside w:ins runs
+                for (const inner of elChildren(n)) {
+                    if (elName(inner) === "w:r") {
+                        for (const rk of elChildren(inner)) {
+                            if (elName(rk) === "w:commentReference") {
+                                const attrs = elAttrs(rk);
+                                const commentId = String(attrs["@_w:id"] ?? "");
+                                const comment = commentsMap.get(commentId);
+                                if (comment) {
+                                    s += `{>>by ${comment.author}: ${comment.text}<<}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (name === "w:del") {
+                const delText = extractText(elChildren(n), "w:delText");
+                if (delText) s += `{--${delText}--}`;
+            } else if (
+                name === "w:hyperlink" ||
+                name === "w:sdt" ||
+                name === "w:sdtContent"
+            ) {
+                s += processChildren(elChildren(n));
+            }
+        }
+        return s;
+    };
+
+    out = processChildren(paraChildren);
+    return out;
+}
+
+/**
  * Extract the body text of a .docx using the same flattening rules as the
  * tracked-changes matcher. Paragraphs are joined by a single newline. The
  * output is what the LLM should base its `find` / `context_before` /
  * `context_after` strings on, since it exactly mirrors the string the
  * anchor matcher operates against.
+ *
+ * When the document contains tracked changes or comments, they are surfaced
+ * as inline markers:
+ *   {++inserted text++}        — w:ins insertions
+ *   {--deleted text--}         — w:del deletions
+ *   {>>by AUTHOR: comment<<}   — Word comments from word/comments.xml
  */
 export async function extractDocxBodyText(bytes: Buffer): Promise<string> {
     const zip = await JSZip.loadAsync(bytes);
@@ -726,14 +822,60 @@ export async function extractDocxBodyText(bytes: Buffer): Promise<string> {
     const bodyChildren = findBody(tree);
     if (!bodyChildren) return "";
 
+    // Load comments.xml and build a map from comment id -> {author, text}
+    const commentsMap = new Map<string, { author: string; text: string }>();
+    const commentsFile = getZipEntry(zip, "word/comments.xml");
+    if (commentsFile) {
+        try {
+            const commentsXmlRaw = await commentsFile.async("string");
+            const commentsTree = parser.parse(commentsXmlRaw) as XNode[];
+            const visitComments = (nodes: XNode[]) => {
+                for (const n of nodes) {
+                    const name = elName(n);
+                    if (!name) continue;
+                    if (name === "w:comment") {
+                        const attrs = elAttrs(n);
+                        const id = String(attrs["@_w:id"] ?? "");
+                        const author = String(attrs["@_w:author"] ?? "");
+                        // Collect all text from the comment body
+                        const collectCommentText = (ns: XNode[]): string => {
+                            let t = "";
+                            for (const cn of ns) {
+                                const cname = elName(cn);
+                                if (!cname) {
+                                    if (isTextNode(cn)) t += String(cn[TEXT_KEY] ?? "");
+                                    continue;
+                                }
+                                if (cname === "w:t") {
+                                    for (const k of elChildren(cn)) {
+                                        if (isTextNode(k)) t += String(k[TEXT_KEY] ?? "");
+                                    }
+                                } else {
+                                    t += collectCommentText(elChildren(cn));
+                                }
+                            }
+                            return t;
+                        };
+                        const text = collectCommentText(elChildren(n)).trim();
+                        if (id) commentsMap.set(id, { author, text });
+                    }
+                    visitComments(elChildren(n));
+                }
+            };
+            visitComments(commentsTree);
+        } catch {
+            // If comments.xml can't be parsed, continue without comments
+        }
+    }
+
     const lines: string[] = [];
     const collect = (nodes: XNode[]) => {
         for (const n of nodes) {
             const name = elName(n);
             if (!name) continue;
             if (name === "w:p") {
-                const flat = flattenParagraph(elChildren(n));
-                lines.push(flat.paraText);
+                const text = renderParagraphRedline(elChildren(n), commentsMap);
+                lines.push(text);
             } else if (
                 name === "w:tbl" ||
                 name === "w:tr" ||

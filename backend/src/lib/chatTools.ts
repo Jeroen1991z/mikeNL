@@ -18,6 +18,7 @@ import {
     extractDocxBodyText,
     type EditInput,
 } from "./docxTrackedChanges";
+import { extractPdfRedlineMarkdown } from "./pdfRedlineExtract";
 import { buildDownloadUrl } from "./downloadTokens";
 import { attachActiveVersionPaths, loadActiveVersion } from "./documentVersions";
 import {
@@ -104,6 +105,14 @@ Rules:
 - "page" refers to the sequential [Page N] marker in the text you were given (1-indexed from the first page). IGNORE any page numbers printed inside the document itself (footers, roman numerals, etc.)
 - For a single-page quote, set "page" to an integer. If a quote is one continuous sentence that spans two pages, set "page" to "N-M" and insert [[PAGE_BREAK]] in the quote at the page break. Otherwise, use separate citations for text on different pages
 - Put the <CITATIONS> block at the very end of the response. Omit it entirely if there are no citations
+
+TRACKED CHANGES AND REDLINE MARKUP:
+When a document contains tracked changes or redline markup, the text will include these inline markers:
+- {++inserted text++} — text that was added (insertion)
+- {--deleted text--} — text that was removed (deletion)
+- {>>by AUTHOR: comment text<<} — a reviewer comment anchored to the surrounding passage
+
+When discussing such documents: the "current" or "final" version reads with insertions included and deletions excluded. The "original" or "previous" version reads with insertions excluded and deletions included. Treat comments as reviewer annotations, not body text. Always attribute comments by the author name in the marker.
 
 DOCX GENERATION:
 If asked to draft or generate a document, use the generate_docx tool to produce a downloadable Word document. Always use this tool rather than just displaying the document content inline when the user asks for a document to be created.
@@ -839,6 +848,11 @@ export function buildMessages(
 }
 
 export async function extractPdfText(buf: ArrayBuffer): Promise<string> {
+    // Try redline-aware extraction first (requires Python + PyMuPDF)
+    const redline = await extractPdfRedlineMarkdown(buf);
+    if (redline && redline.trim().length > 50) return redline.slice(0, 80_000);
+
+    // Fall back to pdfjs plain text extraction
     try {
         const pdfjsLib = await import(
             "pdfjs-dist/legacy/build/pdf.mjs" as string

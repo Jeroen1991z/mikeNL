@@ -249,20 +249,25 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
             value: string | null,
         ): Promise<boolean> => {
             if (!user) return false;
-            const dbField =
-                provider === "claude" ? "claude_api_key" : "gemini_api_key";
             const stateField =
                 provider === "claude" ? "claudeApiKey" : "geminiApiKey";
             const normalized = value?.trim() ? value.trim() : null;
             try {
-                const { error } = await supabase
-                    .from("user_profiles")
-                    .update({
-                        [dbField]: normalized,
-                        updated_at: new Date().toISOString(),
-                    })
-                    .eq("user_id", user.id);
-                if (error) throw error;
+                const {
+                    data: { session },
+                } = await supabase.auth.getSession();
+                const token = session?.access_token;
+                const apiBase =
+                    process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+                const res = await fetch(`${apiBase}/user/api-key`, {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
+                    body: JSON.stringify({ provider, value: normalized }),
+                });
+                if (!res.ok) throw new Error(await res.text());
                 setProfile((prev) =>
                     prev ? { ...prev, [stateField]: normalized } : null,
                 );
