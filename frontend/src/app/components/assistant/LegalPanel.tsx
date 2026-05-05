@@ -12,11 +12,38 @@ interface Props {
     citation: MikeCitationAnnotation;
 }
 
-/** Find the index of `quote` in `text` (exact first, then case-insensitive). Returns -1 if not found. */
-function findQuoteIndex(text: string, quote: string): number {
-    const idx = text.indexOf(quote);
-    if (idx !== -1) return idx;
-    return text.toLowerCase().indexOf(quote.toLowerCase());
+/**
+ * Find the start/end range of a quote in text.
+ * Tries exact match, then case-insensitive, then splits on [...] markers and
+ * finds the span from the first segment to the last.
+ */
+function findQuoteRange(text: string, quote: string): { start: number; end: number } | null {
+    // 1. Exact match
+    const exact = text.indexOf(quote);
+    if (exact !== -1) return { start: exact, end: exact + quote.length };
+
+    // 2. Case-insensitive
+    const lower = text.toLowerCase();
+    const ci = lower.indexOf(quote.toLowerCase());
+    if (ci !== -1) return { start: ci, end: ci + quote.length };
+
+    // 3. Split on [...] omission markers and find the span between segments
+    const segments = quote
+        .split(/\s*\[\.{2,3}\]\s*|\s*…\s*/)
+        .map((s) => s.trim())
+        .filter((s) => s.length >= 8);
+    if (segments.length < 2) return null;
+
+    const first = segments[0].toLowerCase();
+    const last = segments[segments.length - 1].toLowerCase();
+
+    const startIdx = lower.indexOf(first);
+    if (startIdx === -1) return null;
+
+    const endSearch = lower.indexOf(last, startIdx + first.length);
+    if (endSearch === -1) return null;
+
+    return { start: startIdx, end: endSearch + last.length };
 }
 
 export function LegalPanel({ citation }: Props) {
@@ -64,28 +91,26 @@ export function LegalPanel({ citation }: Props) {
         }
     };
 
-    // Find where the quote sits in the markdown text
-    const matchInfo = useMemo(() => {
+    // Find the range of the quote in the markdown text (supports [...] omissions)
+    const matchRange = useMemo(() => {
         if (!fullText) return null;
         const quote = citation.quote?.trim();
-        if (!quote || quote.length < 10) return { idx: -1, quote: "" };
-        return { idx: findQuoteIndex(fullText, quote), quote };
+        if (!quote || quote.length < 10) return null;
+        return findQuoteRange(fullText, quote);
     }, [fullText, citation.quote]);
 
-    const matchFound = matchInfo === null ? null : matchInfo.idx !== -1;
+    const matchFound = fullText === null ? null : matchRange !== null;
 
-    // Inject <mark> into the markdown string so rehype-raw can render it highlighted
+    // Inject <mark> into the markdown string so rehype-raw renders it highlighted
     const markedText = useMemo(() => {
-        if (!fullText || !matchInfo || matchInfo.idx === -1) return fullText ?? "";
-        const { idx, quote } = matchInfo;
-        // Use the actual slice from the text (preserves original casing)
-        const actualQuote = fullText.slice(idx, idx + quote.length);
+        if (!fullText || !matchRange) return fullText ?? "";
+        const { start, end } = matchRange;
         return (
-            fullText.slice(0, idx) +
-            `<mark class="bg-yellow-200 rounded px-0.5">${actualQuote}</mark>` +
-            fullText.slice(idx + quote.length)
+            fullText.slice(0, start) +
+            `<mark class="bg-yellow-200 rounded px-0.5">${fullText.slice(start, end)}</mark>` +
+            fullText.slice(end)
         );
-    }, [fullText, matchInfo]);
+    }, [fullText, matchRange]);
 
     const isCase = citation.type === "case_law";
     const label = isCase

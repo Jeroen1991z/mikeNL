@@ -153,8 +153,9 @@ Use the same [N] inline marker system as for documents. Place the [N] marker IMM
 After your response, include case law and legislation entries in the <CITATIONS> block alongside any document citations:
 
 For case law:
-{"ref": N, "type": "case_law", "ecli": "ECLI:NL:HR:2020:1234", "title": "HR 1 januari 2020", "court": "Hoge Raad", "date": "2020-01-01", "ro": "3.6", "quote": "exact relevant passage from the judgment"}
+{"ref": N, "type": "case_law", "ecli": "ECLI:NL:HR:2020:1234", "title": "HR 1 januari 2020", "court": "Hoge Raad", "date": "2020-01-01", "ro": "3.6", "quote": "exact passage from the judgment, using [...] for omitted words"}
 - "ro" is the rechtsoverweging (consideration) number where the quoted passage appears, e.g. "3.6" or "4.2.1". Include it whenever the full judgment text was fetched. Omit if unknown.
+- Quote the exact words from the source text. Where you omit words within a passage, write [...] — e.g. "de schuldenaar [...] is verplicht tot vergoeding". Never paraphrase.
 
 For legislation:
 {"ref": N, "type": "legislation", "title": "Burgerlijk Wetboek", "article": "art. 6:162 BW", "url": "<url from fetch_legislation_article result>", "quote": "text of the relevant article or provision"}
