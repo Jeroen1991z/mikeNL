@@ -9,7 +9,7 @@ legalRouter.get("/case", requireAuth, async (req, res) => {
     const ecli = req.query.ecli as string;
     if (!ecli) return res.status(400).json({ error: "ecli required" });
     try {
-        const detail = await fetchCaseLaw(ecli);
+        const detail = await fetchCaseLaw(ecli, { display: true });
         res.json(detail);
     } catch (err) {
         res.status(500).json({ error: String(err) });

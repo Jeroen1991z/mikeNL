@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { ExternalLink, Loader2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 import type { MikeCitationAnnotation } from "../shared/types";
 import { fetchLegalCase, fetchLegalArticle } from "@/app/lib/mikeApi";
 
@@ -9,7 +12,7 @@ interface Props {
     citation: MikeCitationAnnotation;
 }
 
-/** Find the index of `quote` in `text` (exact, then case-insensitive). Returns -1 if not found. */
+/** Find the index of `quote` in `text` (exact first, then case-insensitive). Returns -1 if not found. */
 function findQuoteIndex(text: string, quote: string): number {
     const idx = text.indexOf(quote);
     if (idx !== -1) return idx;
@@ -20,7 +23,7 @@ export function LegalPanel({ citation }: Props) {
     const [fullText, setFullText] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const highlightRef = useRef<HTMLSpanElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     // Reset when citation changes
     useEffect(() => {
@@ -29,11 +32,14 @@ export function LegalPanel({ citation }: Props) {
         setError(null);
     }, [citation.ecli, citation.article]);
 
-    // Scroll to highlight after full text loads
+    // Scroll to the <mark> element after ReactMarkdown renders it
     useEffect(() => {
-        if (fullText && highlightRef.current) {
-            highlightRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
+        if (!fullText) return;
+        const timer = setTimeout(() => {
+            const mark = containerRef.current?.querySelector("mark");
+            mark?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 120);
+        return () => clearTimeout(timer);
     }, [fullText]);
 
     const loadFullText = async () => {
@@ -44,10 +50,8 @@ export function LegalPanel({ citation }: Props) {
                 const detail = await fetchLegalCase(citation.ecli);
                 setFullText(detail.text);
             } else if (citation.type === "legislation") {
-                // Extract bwb_id from external_url, e.g. https://wetten.overheid.nl/BWBR0005289/...
                 const bwbMatch = citation.external_url?.match(/BWBR\d+/);
                 const bwbId = bwbMatch?.[0];
-                // Extract article number from citation.article, e.g. "art. 6:162 BW" -> "162" or from article field
                 const articleNum = citation.article?.match(/[\d:]+(?:\s*lid\s*\d+)?/)?.[0]?.trim() ?? "";
                 if (!bwbId || !articleNum) throw new Error("Onvoldoende gegevens om artikel op te halen");
                 const detail = await fetchLegalArticle(bwbId, articleNum);
@@ -60,34 +64,28 @@ export function LegalPanel({ citation }: Props) {
         }
     };
 
-    // Compute match position synchronously from fullText — no setState in render
+    // Find where the quote sits in the markdown text
     const matchInfo = useMemo(() => {
         if (!fullText) return null;
         const quote = citation.quote?.trim();
         if (!quote || quote.length < 10) return { idx: -1, quote: "" };
-        const idx = findQuoteIndex(fullText, quote);
-        return { idx, quote };
+        return { idx: findQuoteIndex(fullText, quote), quote };
     }, [fullText, citation.quote]);
 
-    // Derive matchFound from matchInfo for the notice banner
     const matchFound = matchInfo === null ? null : matchInfo.idx !== -1;
 
-    // Build highlighted JSX
-    const renderFullText = (text: string) => {
-        if (!matchInfo || matchInfo.idx === -1 || !matchInfo.quote) {
-            return <span className="whitespace-pre-wrap text-sm leading-relaxed">{text}</span>;
-        }
+    // Inject <mark> into the markdown string so rehype-raw can render it highlighted
+    const markedText = useMemo(() => {
+        if (!fullText || !matchInfo || matchInfo.idx === -1) return fullText ?? "";
         const { idx, quote } = matchInfo;
+        // Use the actual slice from the text (preserves original casing)
+        const actualQuote = fullText.slice(idx, idx + quote.length);
         return (
-            <span className="whitespace-pre-wrap text-sm leading-relaxed">
-                {text.slice(0, idx)}
-                <span ref={highlightRef} className="bg-yellow-200 rounded px-0.5">
-                    {text.slice(idx, idx + quote.length)}
-                </span>
-                {text.slice(idx + quote.length)}
-            </span>
+            fullText.slice(0, idx) +
+            `<mark class="bg-yellow-200 rounded px-0.5">${actualQuote}</mark>` +
+            fullText.slice(idx + quote.length)
         );
-    };
+    }, [fullText, matchInfo]);
 
     const isCase = citation.type === "case_law";
     const label = isCase
@@ -127,7 +125,7 @@ export function LegalPanel({ citation }: Props) {
                 </div>
             </div>
 
-            {/* Quote section */}
+            {/* Quoted passage */}
             <div className="px-4 py-3 border-b border-gray-100 shrink-0 bg-gray-50">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Geciteerde passage</p>
                 <blockquote className="text-sm text-gray-700 leading-relaxed italic border-l-2 border-blue-300 pl-3">
@@ -179,8 +177,22 @@ export function LegalPanel({ citation }: Props) {
                                 Exacte passage niet gevonden in de tekst. De geciteerde passage staat hierboven.
                             </p>
                         )}
-                        <div className="text-sm text-gray-800">
-                            {renderFullText(fullText)}
+                        <div
+                            ref={containerRef}
+                            className="prose prose-sm max-w-none font-serif text-gray-800
+                                prose-headings:font-sans prose-headings:font-semibold
+                                prose-h2:text-base prose-h2:mt-6 prose-h2:mb-2
+                                prose-h3:text-sm prose-h3:mt-4 prose-h3:mb-1
+                                prose-p:my-2 prose-p:leading-relaxed
+                                prose-strong:font-semibold
+                                prose-li:my-0.5"
+                        >
+                            <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                rehypePlugins={[rehypeRaw]}
+                            >
+                                {markedText}
+                            </ReactMarkdown>
                         </div>
                     </div>
                 )}
