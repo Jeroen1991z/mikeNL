@@ -157,13 +157,13 @@ export function LegalPanel({ citation }: Props) {
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                     {isCase ? "Uitspraak" : "Wetgeving"}
                 </p>
-                {externalUrl ? (
+                {isCase && externalUrl ? (
                     <a
                         href={externalUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:text-blue-900 hover:underline leading-snug"
-                        title="Open op website"
+                        title="Open op rechtspraak.nl"
                     >
                         <span className="truncate">{label}</span>
                         <ExternalLink className="h-3 w-3 shrink-0" />
