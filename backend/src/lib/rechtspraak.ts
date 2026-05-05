@@ -421,18 +421,18 @@ export async function fetchLegislationArticle(
                 // Strip namespace prefixes so extractTag works regardless of ns2:/ns3: etc.
                 const mXml = (await mResp.text()).replace(/<(\/?)\w+:/g, "<$1");
                 const entries: { date: string; file: string }[] = [];
+                const today = new Date().toISOString().slice(0, 10);
                 const entryRe = /<Uitwisselingsbestand[^>]*>([\s\S]*?)<\/Uitwisselingsbestand>/g;
                 let em: RegExpExecArray | null;
                 while ((em = entryRe.exec(mXml)) !== null) {
                     const entry = em[1];
-                    const eind = extractTag(entry, "GeldigTot");
-                    if (!eind.startsWith("9999")) continue;
                     const vanaf = extractTag(entry, "GeldigVanaf");
                     const naam = extractTag(entry, "Naam");
-                    if (naam) entries.push({ date: vanaf, file: naam });
+                    // Keep entries whose geldigheid has started (vanaf <= today)
+                    if (naam && vanaf && vanaf <= today) entries.push({ date: vanaf, file: naam });
                 }
                 if (entries.length === 0) {
-                    resolveError += `manifest: no current entries found; `;
+                    resolveError += `manifest: no current entries found (parsed ${mXml.slice(0, 200)}); `;
                 } else {
                     entries.sort((a, b) => b.date.localeCompare(a.date));
                     const file = entries[0].file;
