@@ -153,28 +153,26 @@ export function LegalPanel({ citation }: Props) {
         <div className="flex flex-col h-full overflow-hidden">
             {/* Header */}
             <div className="px-4 pt-4 pb-3 border-b border-gray-100 shrink-0">
-                <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                            {isCase ? "Uitspraak" : "Wetgeving"}
-                        </p>
-                        <p className="text-sm font-medium text-gray-900 leading-snug truncate">{label}</p>
-                        {locationLabel && (
-                            <p className="text-xs text-gray-500 mt-0.5">{locationLabel}</p>
-                        )}
-                    </div>
-                    {externalUrl && (
-                        <a
-                            href={externalUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-                            title="Open op website"
-                        >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
-                    )}
-                </div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                    {isCase ? "Uitspraak" : "Wetgeving"}
+                </p>
+                {externalUrl ? (
+                    <a
+                        href={externalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:text-blue-900 hover:underline leading-snug"
+                        title="Open op website"
+                    >
+                        <span className="truncate">{label}</span>
+                        <ExternalLink className="h-3 w-3 shrink-0" />
+                    </a>
+                ) : (
+                    <p className="text-sm font-medium text-gray-900 leading-snug">{label}</p>
+                )}
+                {locationLabel && (
+                    <p className="text-xs text-gray-500 mt-0.5">{locationLabel}</p>
+                )}
             </div>
 
             {/* Quoted passage */}
@@ -246,19 +244,6 @@ export function LegalPanel({ citation }: Props) {
                                 {markedText}
                             </ReactMarkdown>
                         </div>
-                        {externalUrl && (
-                            <div className="mt-6 pt-4 border-t border-gray-100">
-                                <a
-                                    href={externalUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 hover:underline"
-                                >
-                                    <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-                                    {isCase ? "Open uitspraak op rechtspraak.nl" : "Open wet op wetten.overheid.nl"}
-                                </a>
-                            </div>
-                        )}
                     </div>
                 )}
             </div>
