@@ -257,18 +257,14 @@ export default function SignupPage() {
                     <div className="mt-4 text-center text-xs text-gray-500">
                         By signing up, you agree to our{" "}
                         <Link
-                            href="https://mikeoss.com/terms"
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            href="/terms"
                             className="text-blue-600 hover:underline"
                         >
                             Terms of Use
                         </Link>{" "}
                         and{" "}
                         <Link
-                            href="https://mikeoss.com/privacy"
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            href="/privacy"
                             className="text-blue-600 hover:underline"
                         >
                             Privacy Policy
