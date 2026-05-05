@@ -52,12 +52,24 @@ export function LegalPanel({ citation }: Props) {
     const [error, setError] = useState<string | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
-    // Reset when citation changes
+    // Reset when citation changes; auto-load legislation immediately (articles are short)
     useEffect(() => {
         setFullText(null);
-        setLoading(false);
         setError(null);
-    }, [citation.ecli, citation.article]);
+        if (citation.type === "legislation") {
+            setLoading(true);
+        } else {
+            setLoading(false);
+        }
+    }, [citation.ecli, citation.article, citation.type]);
+
+    // Auto-load for legislation
+    useEffect(() => {
+        if (citation.type === "legislation" && !fullText && !error) {
+            loadFullText();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [citation.ecli, citation.article, citation.type]);
 
     // Scroll to the <mark> element after ReactMarkdown renders it
     useEffect(() => {
@@ -160,7 +172,7 @@ export function LegalPanel({ citation }: Props) {
 
             {/* Full text area */}
             <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
-                {!fullText && !loading && !error && (
+                {!fullText && !loading && !error && isCase && (
                     <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
                         <button
                             type="button"
@@ -170,7 +182,7 @@ export function LegalPanel({ citation }: Props) {
                             {loadLabel}
                         </button>
                         <p className="text-xs text-gray-400">
-                            Haalt tekst op van {isCase ? "rechtspraak.nl" : "wetten.overheid.nl"}
+                            Haalt tekst op van rechtspraak.nl
                         </p>
                     </div>
                 )}
