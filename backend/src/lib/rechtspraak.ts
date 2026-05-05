@@ -418,26 +418,24 @@ export async function fetchLegislationArticle(
             if (!mResp.ok) {
                 resolveError += `manifest HTTP ${mResp.status}; `;
             } else {
-                // Strip namespace prefixes so extractTag works regardless of ns2:/ns3: etc.
-                const mXml = (await mResp.text()).replace(/<(\/?)\w+:/g, "<$1");
-                const entries: { date: string; file: string }[] = [];
+                const mXml = await mResp.text();
+                // The manifest XML structure varies; instead of parsing elements,
+                // extract all repository XML URLs for this bwb_id and pick the latest by date.
                 const today = new Date().toISOString().slice(0, 10);
-                const entryRe = /<Uitwisselingsbestand[^>]*>([\s\S]*?)<\/Uitwisselingsbestand>/g;
-                let em: RegExpExecArray | null;
-                while ((em = entryRe.exec(mXml)) !== null) {
-                    const entry = em[1];
-                    const vanaf = extractTag(entry, "GeldigVanaf");
-                    const naam = extractTag(entry, "Naam");
-                    // Keep entries whose geldigheid has started (vanaf <= today)
-                    if (naam && vanaf && vanaf <= today) entries.push({ date: vanaf, file: naam });
+                const urlPat = new RegExp(
+                    `https://repository\\.officiele-overheidspublicaties\\.nl/bwb/${bwb_id}/(\\d{4}-\\d{2}-\\d{2})/xml/[^"<\\s]+\\.xml`,
+                    "g",
+                );
+                const candidates: { date: string; url: string }[] = [];
+                let um: RegExpExecArray | null;
+                while ((um = urlPat.exec(mXml)) !== null) {
+                    if (um[1] <= today) candidates.push({ date: um[1], url: um[0] });
                 }
-                if (entries.length === 0) {
-                    resolveError += `manifest: no current entries found (parsed ${mXml.slice(0, 200)}); `;
+                if (candidates.length === 0) {
+                    resolveError += `manifest: no XML URLs found; `;
                 } else {
-                    entries.sort((a, b) => b.date.localeCompare(a.date));
-                    const file = entries[0].file;
-                    const dateKey = file.replace(`${bwb_id}_`, "").replace(".xml", "");
-                    targetUrl = `https://repository.officiele-overheidspublicaties.nl/bwb/${bwb_id}/${dateKey}/xml/${file}`;
+                    candidates.sort((a, b) => b.date.localeCompare(a.date));
+                    targetUrl = candidates[0].url;
                 }
             }
         } catch (e) {
