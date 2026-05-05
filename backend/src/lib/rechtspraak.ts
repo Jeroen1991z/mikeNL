@@ -69,6 +69,72 @@ function stripTags(s: string): string {
     return s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
 
+// Convert rechtspraak.nl XML body to markdown-formatted text for display.
+// Handles the ECLI open-data XML elements: <title>, <nr>, <al>, <para>,
+// <section>, <paragraaf>, <emphasis>, <bold>, <listitem>, etc.
+function xmlToMarkdown(xml: string): string {
+    let s = xml;
+
+    // Section headings — <title> becomes ##, nested <titel> inside <kop> becomes ###
+    s = s.replace(/<title[^>]*>([\s\S]*?)<\/title>/gi, (_, c) => {
+        const t = decodeXml(stripTags(c)).trim();
+        return t ? `\n\n## ${t}\n\n` : "";
+    });
+    s = s.replace(/<titel[^>]*>([\s\S]*?)<\/titel>/gi, (_, c) => {
+        const t = decodeXml(stripTags(c)).trim();
+        return t ? `\n\n### ${t}\n\n` : "";
+    });
+
+    // <nr> — rechtsoverweging numbers; emit bold prefix, no newline before text
+    s = s.replace(/<nr[^>]*>([\s\S]*?)<\/nr>/gi, (_, c) => {
+        const num = decodeXml(stripTags(c)).trim();
+        return num ? `\n\n**${num}** ` : "\n\n";
+    });
+
+    // <al> (alinea) — main paragraph text element
+    s = s.replace(/<\/al>/gi, "\n\n");
+    s = s.replace(/<al[^>]*>/gi, "");
+
+    // <para> wrappers — just ensure spacing
+    s = s.replace(/<\/para>/gi, "\n\n");
+    s = s.replace(/<para[^>]*>/gi, "");
+
+    // Structural block elements — normalise to blank line
+    const blockRe = /<\/?(section|paragraaf|uitspraakoverwegingen|procesverloop|rolnummer|aanhef|beslissing|ondertekening|noot|kop)[^>]*>/gi;
+    s = s.replace(blockRe, "\n\n");
+
+    // Inline formatting
+    s = s.replace(/<emphasis[^>]*>([\s\S]*?)<\/emphasis>/gi, (_, c) => `*${c}*`);
+    s = s.replace(/<(?:bold|b)[^>]*>([\s\S]*?)<\/(?:bold|b)>/gi, (_, c) => `**${c}**`);
+    s = s.replace(/<(?:underline|u)[^>]*>([\s\S]*?)<\/(?:underline|u)>/gi, (_, c) => c);
+
+    // Lists
+    s = s.replace(/<listitem[^>]*>([\s\S]*?)<\/listitem>/gi, (_, c) => `\n- ${stripTags(c).trim()}`);
+    s = s.replace(/<\/?(lijst|list)[^>]*>/gi, "\n\n");
+
+    // Tables — flatten to pipe-separated text
+    s = s.replace(/<entry[^>]*>([\s\S]*?)<\/entry>/gi, (_, c) => `${stripTags(c).trim()} | `);
+    s = s.replace(/<row[^>]*>([\s\S]*?)<\/row>/gi, (_, c) => `${c.trim()}\n`);
+    s = s.replace(/<\/?(table|tabel|colspec|tbody|thead|tgroup)[^>]*>/gi, "\n\n");
+
+    // Footnotes — inline in parens
+    s = s.replace(/<footnote[^>]*>([\s\S]*?)<\/footnote>/gi, (_, c) => `(${stripTags(c).trim()})`);
+
+    // Strip all remaining tags
+    s = s.replace(/<[^>]+>/g, "");
+
+    // Decode XML entities
+    s = decodeXml(s);
+
+    // Normalise whitespace
+    s = s.replace(/[ \t]+/g, " ");
+    s = s.replace(/\n[ \t]+/g, "\n");
+    s = s.replace(/[ \t]+\n/g, "\n");
+    s = s.replace(/\n{3,}/g, "\n\n");
+
+    return s.trim();
+}
+
 // Infer a human-readable court name from the ECLI code segment.
 function inferCourt(ecli: string): string {
     const parts = ecli.split(":");
@@ -158,7 +224,7 @@ export async function searchCaseLaw(
 // Case law full-text fetch
 // ---------------------------------------------------------------------------
 
-export async function fetchCaseLaw(ecli: string): Promise<CaseLawDetail> {
+export async function fetchCaseLaw(ecli: string, options: { display?: boolean } = {}): Promise<CaseLawDetail> {
     const url = `${RECHTSPRAAK_BASE}/content?id=${encodeURIComponent(ecli)}`;
     const resp = await fetch(url, {
         headers: { Accept: "application/xml, */*" },
@@ -185,8 +251,10 @@ export async function fetchCaseLaw(ecli: string): Promise<CaseLawDetail> {
         xml.match(/<conclusie>([\s\S]*?)<\/conclusie>/i);
     const rawBody = bodyMatch ? bodyMatch[1] : xml;
 
-    // Strip XML tags, normalise whitespace, cap length to avoid overloading context.
-    const text = stripTags(rawBody).slice(0, 15_000);
+    // For display: convert XML to markdown (preserving structure). For LLM: plain text, capped.
+    const text = options.display
+        ? xmlToMarkdown(rawBody).slice(0, 80_000)
+        : stripTags(rawBody).slice(0, 15_000);
 
     const viewUrl = `https://uitspraken.rechtspraak.nl/details?id=${encodeURIComponent(ecli)}`;
     return { ecli, title, court, date, text, url: viewUrl };
