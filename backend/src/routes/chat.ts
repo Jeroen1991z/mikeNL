@@ -322,7 +322,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         project_id?: string;
         model?: string;
         rechtspraak_enabled?: boolean;
-        search_sources?: { rechtspraak?: boolean; wetten?: boolean; mvt?: boolean; internet?: boolean };
+        search_sources?: { rechtspraak?: boolean; wetten?: boolean };
     };
 
     console.log("[chat/stream] incoming request", {

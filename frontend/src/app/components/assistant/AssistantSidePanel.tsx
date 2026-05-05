@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { DocPanel, type DocPanelMode } from "../shared/DocPanel";
+import { LegalPanel } from "./LegalPanel";
 import type {
     MikeCitationAnnotation,
     MikeEditAnnotation,
@@ -42,7 +43,12 @@ export type EditTab = CommonTab & {
     edit: MikeEditAnnotation;
 };
 
-export type AssistantSidePanelTab = DocumentTab | CitationTab | EditTab;
+export type LegalTab = CommonTab & {
+    kind: "legal";
+    citation: MikeCitationAnnotation;
+};
+
+export type AssistantSidePanelTab = DocumentTab | CitationTab | EditTab | LegalTab;
 
 interface Props {
     tabs: AssistantSidePanelTab[];
@@ -223,6 +229,19 @@ export function AssistantSidePanel({
             <div className="flex-1 min-h-0 relative">
                 {tabs.map((tab) => {
                     const isActive = tab.id === active.id;
+
+                    if (tab.kind === "legal") {
+                        return (
+                            <div
+                                key={tab.id}
+                                className={`absolute inset-0 flex flex-col ${isActive ? "" : "invisible pointer-events-none"}`}
+                                aria-hidden={!isActive}
+                            >
+                                <LegalPanel citation={tab.citation} />
+                            </div>
+                        );
+                    }
+
                     const mode: DocPanelMode =
                         tab.kind === "citation"
                             ? {

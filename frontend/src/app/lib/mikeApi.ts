@@ -819,3 +819,21 @@ export async function deleteWorkflowShare(
         method: "DELETE",
     });
 }
+
+// ---------------------------------------------------------------------------
+// Legal (case law & legislation full text)
+// ---------------------------------------------------------------------------
+
+export async function fetchLegalCase(ecli: string): Promise<{ ecli: string; title: string; court: string; date: string; text: string; url: string }> {
+    return apiRequest<{ ecli: string; title: string; court: string; date: string; text: string; url: string }>(
+        `/legal/case?ecli=${encodeURIComponent(ecli)}`,
+    );
+}
+
+export async function fetchLegalArticle(bwbId: string, article: string, xmlUrl?: string): Promise<{ bwb_id: string; article: string; text: string; url: string }> {
+    const params = new URLSearchParams({ bwb_id: bwbId, article });
+    if (xmlUrl) params.set("xml_url", xmlUrl);
+    return apiRequest<{ bwb_id: string; article: string; text: string; url: string }>(
+        `/legal/article?${params}`,
+    );
+}
