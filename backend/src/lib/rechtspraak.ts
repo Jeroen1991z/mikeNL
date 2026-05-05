@@ -398,7 +398,7 @@ export async function fetchLegislationArticle(
     bwb_id: string,
     article_number: string,
     xml_url?: string,
-): Promise<{ bwb_id: string; article: string; text: string; url: string }> {
+): Promise<{ bwb_id: string; article: string; text: string; url: string; xml_url: string }> {
     // Resolve XML URL: use provided url, then SRU lookup, then manifest as last resort
     let targetUrl = xml_url ?? "";
     if (!targetUrl) {
@@ -472,6 +472,7 @@ export async function fetchLegislationArticle(
                 article: article_number,
                 text: `Artikel ${article_number}\n${articleText.slice(0, 3000)}`,
                 url: `https://wetten.overheid.nl/${bwb_id}/${today}#Artikel${article_number}`,
+                xml_url: targetUrl,
             };
         }
     }
