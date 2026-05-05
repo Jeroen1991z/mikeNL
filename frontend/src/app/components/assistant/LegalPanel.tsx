@@ -93,7 +93,7 @@ export function LegalPanel({ citation }: Props) {
                 const bwbId = bwbMatch?.[0];
                 const articleNum = citation.article?.match(/[\d:]+(?:\s*lid\s*\d+)?/)?.[0]?.trim() ?? "";
                 if (!bwbId || !articleNum) throw new Error("Onvoldoende gegevens om artikel op te halen");
-                const detail = await fetchLegalArticle(bwbId, articleNum);
+                const detail = await fetchLegalArticle(bwbId, articleNum, citation.xml_url);
                 setFullText(detail.text);
             }
         } catch (e) {

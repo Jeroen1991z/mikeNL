@@ -201,6 +201,8 @@ export interface MikeCitationAnnotation {
   title?: string;
   /** Legislation — article reference */
   article?: string;
+  /** Legislation — direct XML URL for fetching article text */
+  xml_url?: string;
 }
 
 const PAGE_BREAK_SENTINEL = "[[PAGE_BREAK]]";

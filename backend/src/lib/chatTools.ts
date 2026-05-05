@@ -158,8 +158,8 @@ For case law:
 - Quote the exact words from the source text. Where you omit words within a passage, write [...] — e.g. "de schuldenaar [...] is verplicht tot vergoeding". Never paraphrase.
 
 For legislation:
-{"ref": N, "type": "legislation", "title": "Burgerlijk Wetboek", "article": "art. 6:162 BW", "url": "<url from fetch_legislation_article result>", "quote": "text of the relevant article or provision"}
-- Always use the URL returned by fetch_legislation_article (it contains the correct BWB ID and article anchor). Do not construct legislation URLs yourself.
+{"ref": N, "type": "legislation", "title": "Burgerlijk Wetboek", "article": "art. 6:162 BW", "url": "<url field from fetch_legislation_article result>", "xml_url": "<xml_url field from fetch_legislation_article result>", "quote": "text of the relevant article or provision"}
+- Always copy both "url" and "xml_url" exactly as returned by fetch_legislation_article. Do not construct these URLs yourself.
 
 QUALITY STANDARDS (Harvey / Legora level):
 - Always cite primary sources; never state Dutch law from memory alone
@@ -595,7 +595,7 @@ export const TOOLS = [
 type ParsedCitation =
     | { kind: "doc"; ref: number; doc_id: string; page: number | string; quote: string }
     | { kind: "case_law"; ref: number; ecli: string; title?: string; court?: string; date?: string; ro?: string; quote: string; external_url: string }
-    | { kind: "legislation"; ref: number; title: string; article?: string; url?: string; quote: string };
+    | { kind: "legislation"; ref: number; title: string; article?: string; url?: string; xml_url?: string; quote: string };
 
 function normalizeCitation(raw: unknown): ParsedCitation | null {
     if (!raw || typeof raw !== "object") return null;
@@ -627,6 +627,7 @@ function normalizeCitation(raw: unknown): ParsedCitation | null {
             title: c.title,
             article: typeof c.article === "string" ? c.article : undefined,
             url: typeof c.url === "string" ? c.url : undefined,
+            xml_url: typeof c.xml_url === "string" ? c.xml_url : undefined,
             quote: c.quote,
         };
     }
@@ -2925,6 +2926,7 @@ export function extractAnnotations(
                 article: c.article,
                 quote: c.quote,
                 external_url: c.url,
+                xml_url: c.xml_url,
             };
         }
         // Document citation
