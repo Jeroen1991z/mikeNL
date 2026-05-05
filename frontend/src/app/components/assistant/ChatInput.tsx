@@ -4,19 +4,24 @@ import {
     useState,
     useCallback,
     useRef,
+    useEffect,
     forwardRef,
     useImperativeHandle,
 } from "react";
 import {
     ArrowRight,
     Check,
+    ChevronDown,
+    Database,
     File,
     FileText,
     FolderOpen,
     Library,
+    Scale,
     Square,
     X,
 } from "lucide-react";
+import type { SearchSources } from "../shared/types";
 import { AddDocButton } from "./AddDocButton";
 import { AddDocumentsModal } from "../shared/AddDocumentsModal";
 import { AssistantWorkflowModal } from "./AssistantWorkflowModal";
@@ -66,7 +71,23 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
         title: string;
     } | null>(null);
     const [model, setModel] = useSelectedModel();
+    const [searchSources, setSearchSources] = useState<SearchSources>({
+        rechtspraak: true,
+        wetten: true,
+    });
+    const [sourcesOpen, setSourcesOpen] = useState(false);
+    const sourcesRef = useRef<HTMLDivElement>(null);
     const { profile } = useUserProfile();
+
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (sourcesRef.current && !sourcesRef.current.contains(e.target as Node)) {
+                setSourcesOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
     const apiKeys = {
         claudeApiKey: profile?.claudeApiKey ?? null,
@@ -140,7 +161,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
             files: files.length > 0 ? files : undefined,
             workflow: wf ?? undefined,
             model,
-            searchSources: { rechtspraak: true, wetten: true },
+            searchSources,
         });
     };
 
@@ -276,6 +297,53 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                         </div>
 
                         <div className="flex items-center gap-1">
+                            {/* Sources dropdown */}
+                            <div className="relative" ref={sourcesRef}>
+                                <button
+                                    type="button"
+                                    onClick={() => setSourcesOpen((v) => !v)}
+                                    aria-label="Search sources"
+                                    className={`flex items-center gap-1 rounded-lg px-2 h-8 text-sm transition-colors ${
+                                        sourcesOpen
+                                            ? "bg-blue-50 text-blue-600"
+                                            : "text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                                    }`}
+                                >
+                                    <Database className="h-3.5 w-3.5" />
+                                    <span className="hidden sm:inline text-xs">Bronnen</span>
+                                    <ChevronDown className="h-3 w-3" />
+                                </button>
+
+                                {sourcesOpen && (
+                                    <div className="absolute bottom-full mb-1.5 left-0 z-50 w-56 bg-white border border-gray-200 rounded-xl shadow-lg py-1.5 text-sm">
+                                        <div className="px-3 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">Zoekbronnen</div>
+                                        {(
+                                            [
+                                                { key: "rechtspraak", label: "Rechtspraak.nl", icon: Scale, desc: "Uitspraken" },
+                                                { key: "wetten", label: "Wetten.overheid.nl", icon: FileText, desc: "Wetgeving" },
+                                            ] as const
+                                        ).map(({ key, label, icon: Icon, desc }) => (
+                                            <button
+                                                key={key}
+                                                type="button"
+                                                onClick={() =>
+                                                    setSearchSources((s) => ({ ...s, [key]: !s[key] }))
+                                                }
+                                                className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-50 transition-colors"
+                                            >
+                                                <div className={`w-4 h-4 rounded flex items-center justify-center border ${searchSources[key] ? "bg-blue-600 border-blue-600" : "border-gray-300"}`}>
+                                                    {searchSources[key] && <Check className="h-2.5 w-2.5 text-white" />}
+                                                </div>
+                                                <Icon className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                                                <div className="flex flex-col items-start min-w-0">
+                                                    <span className="text-gray-700 text-xs font-medium">{label}</span>
+                                                    <span className="text-gray-400 text-xs">{desc}</span>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                             <ModelToggle
                                 value={model}
                                 onChange={setModel}
