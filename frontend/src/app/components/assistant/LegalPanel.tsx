@@ -146,9 +146,7 @@ export function LegalPanel({ citation }: Props) {
         : (citation.article ?? citation.title ?? "Wetsartikel");
     const loadLabel = isCase ? "Laad volledige uitspraak" : "Laad artikel";
     const externalUrl = citation.external_url;
-    const locationLabel = citation.type === "case_law"
-        ? (citation.ro ? `r.o. ${citation.ro}` : null)
-        : (citation.article ?? null);
+    const locationLabel = isCase ? (citation.ro ? `r.o. ${citation.ro}` : null) : null;
 
     return (
         <div className="flex flex-col h-full overflow-hidden">
