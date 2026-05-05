@@ -413,16 +413,17 @@ export async function fetchLegislationArticle(
         try {
             const mResp = await fetch(manifestUrl, { signal: AbortSignal.timeout(10_000) });
             if (mResp.ok) {
-                const mXml = await mResp.text();
+                // Strip namespace prefixes so extractTag works regardless of ns2:/ns3: etc.
+                const mXml = (await mResp.text()).replace(/<(\/?)\w+:/g, "<$1");
                 const entries: { date: string; file: string }[] = [];
-                const entryRe = /<ns2:Uitwisselingsbestand[^>]*>([\s\S]*?)<\/ns2:Uitwisselingsbestand>/g;
+                const entryRe = /<Uitwisselingsbestand[^>]*>([\s\S]*?)<\/Uitwisselingsbestand>/g;
                 let em: RegExpExecArray | null;
                 while ((em = entryRe.exec(mXml)) !== null) {
                     const entry = em[1];
-                    const eind = extractTag(entry, "ns2:GeldigTot") || extractTag(entry, "GeldigTot");
+                    const eind = extractTag(entry, "GeldigTot");
                     if (!eind.startsWith("9999")) continue;
-                    const vanaf = extractTag(entry, "ns2:GeldigVanaf") || extractTag(entry, "GeldigVanaf");
-                    const naam = extractTag(entry, "ns2:Naam") || extractTag(entry, "Naam");
+                    const vanaf = extractTag(entry, "GeldigVanaf");
+                    const naam = extractTag(entry, "Naam");
                     if (naam) entries.push({ date: vanaf, file: naam });
                 }
                 if (entries.length > 0) {
