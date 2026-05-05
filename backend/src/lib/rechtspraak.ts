@@ -348,37 +348,50 @@ export async function searchLegislation(
 // ---------------------------------------------------------------------------
 
 // Resolve the latest current XML URL for a BWB ID via the SRU search service.
-// This is more reliable than the manifest endpoint and avoids scraping wetten.overheid.nl.
+// The identifier field stores a full URL so we use "any" (contains) rather than exact match.
 async function resolveBwbXmlUrl(bwb_id: string): Promise<string> {
-    const params = new URLSearchParams({
-        operation: "searchRetrieve",
-        version: "1.2",
-        "x-connection": "BWB",
-        query: `overheidbwb.identifier = "${bwb_id}"`,
-        maximumRecords: "5",
-    });
-    const resp = await fetch(`${WETTEN_SRU_BASE}?${params}`, {
-        signal: AbortSignal.timeout(12_000),
-    });
-    if (!resp.ok) throw new Error(`SRU lookup failed: HTTP ${resp.status}`);
-    const xml = await resp.text();
+    // Try two query forms: the BWB-specific index and the Dublin Core identifier index
+    const queries = [
+        `overheidbwb.identifier any "${bwb_id}"`,
+        `dcterms.identifier any "${bwb_id}"`,
+    ];
+    for (const query of queries) {
+        try {
+            const params = new URLSearchParams({
+                operation: "searchRetrieve",
+                version: "1.2",
+                "x-connection": "BWB",
+                query,
+                maximumRecords: "10",
+            });
+            const resp = await fetch(`${WETTEN_SRU_BASE}?${params}`, {
+                signal: AbortSignal.timeout(12_000),
+            });
+            if (!resp.ok) continue;
+            const xml = await resp.text();
 
-    // Pick the record with the latest geldigheidsperiode_startdatum that is still current
-    let bestDate = "";
-    let bestUrl = "";
-    const recordRe = /<record[^>]*>([\s\S]*?)<\/record>/g;
-    let m: RegExpExecArray | null;
-    while ((m = recordRe.exec(xml)) !== null) {
-        const rec = m[1];
-        const locatie = extractTag(rec, "overheidbwb:locatie_toestand");
-        const startDate = extractTag(rec, "overheidbwb:geldigheidsperiode_startdatum").slice(0, 10);
-        if (locatie && startDate > bestDate) {
-            bestDate = startDate;
-            bestUrl = locatie;
+            // Pick the record matching our bwb_id with the latest startdatum
+            let bestDate = "";
+            let bestUrl = "";
+            const recordRe = /<record[^>]*>([\s\S]*?)<\/record>/g;
+            let m: RegExpExecArray | null;
+            while ((m = recordRe.exec(xml)) !== null) {
+                const rec = m[1];
+                const identifier = extractTag(rec, "dcterms:identifier");
+                if (!identifier.includes(bwb_id)) continue;
+                const locatie = extractTag(rec, "overheidbwb:locatie_toestand");
+                const startDate = extractTag(rec, "overheidbwb:geldigheidsperiode_startdatum").slice(0, 10);
+                if (locatie && startDate > bestDate) {
+                    bestDate = startDate;
+                    bestUrl = locatie;
+                }
+            }
+            if (bestUrl) return bestUrl;
+        } catch {
+            // try next query
         }
     }
-    if (!bestUrl) throw new Error(`No current XML found for ${bwb_id}`);
-    return bestUrl;
+    throw new Error(`Geen actuele XML gevonden voor ${bwb_id}`);
 }
 
 export async function fetchLegislationArticle(
