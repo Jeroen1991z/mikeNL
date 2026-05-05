@@ -419,20 +419,48 @@ export async function fetchLegislationArticle(
                 resolveError += `manifest HTTP ${mResp.status}; `;
             } else {
                 const mXml = await mResp.text();
-                // The manifest XML structure varies; instead of parsing elements,
-                // extract all repository XML URLs for this bwb_id and pick the latest by date.
                 const today = new Date().toISOString().slice(0, 10);
-                const urlPat = new RegExp(
-                    `https://repository\\.officiele-overheidspublicaties\\.nl/bwb/${bwb_id}/(\\d{4}-\\d{2}-\\d{2})/xml/[^"<\\s]+\\.xml`,
-                    "g",
-                );
+                const BASE = "https://repository.officiele-overheidspublicaties.nl";
                 const candidates: { date: string; url: string }[] = [];
-                let um: RegExpExecArray | null;
-                while ((um = urlPat.exec(mXml)) !== null) {
-                    if (um[1] <= today) candidates.push({ date: um[1], url: um[0] });
+
+                // Strategy 1: full repository URLs already in the manifest
+                const fullUrlPat = new RegExp(
+                    `${BASE}/bwb/${bwb_id}/(\\d{4}-\\d{2}-\\d{2})/xml/[^"<\\s]+\\.xml`, "g",
+                );
+                for (const m of mXml.matchAll(fullUrlPat)) {
+                    if (m[1] <= today) candidates.push({ date: m[1], url: m[0] });
                 }
+
+                // Strategy 2: filename pattern BWBR…_YYYY-MM-DD.xml (manifest stores filenames)
                 if (candidates.length === 0) {
-                    resolveError += `manifest: no XML URLs found; `;
+                    const filenamePat = new RegExp(`${bwb_id}_(\\d{4}-\\d{2}-\\d{2})\\.xml`, "g");
+                    for (const m of mXml.matchAll(filenamePat)) {
+                        const date = m[1];
+                        if (date <= today) {
+                            const url = `${BASE}/bwb/${bwb_id}/${date}/xml/${bwb_id}_${date}.xml`;
+                            candidates.push({ date, url });
+                        }
+                    }
+                }
+
+                // Strategy 3: any YYYY-MM-DD date attribute/element in the manifest
+                // (covers validFrom="..." and similar patterns)
+                if (candidates.length === 0) {
+                    const datePat = /(\d{4}-\d{2}-\d{2})/g;
+                    const dates = [...new Set([...mXml.matchAll(datePat)].map(m => m[1]))]
+                        .filter(d => d >= "2000-01-01" && d <= today)
+                        .sort()
+                        .reverse();
+                    for (const date of dates.slice(0, 3)) {
+                        candidates.push({
+                            date,
+                            url: `${BASE}/bwb/${bwb_id}/${date}/xml/${bwb_id}_${date}.xml`,
+                        });
+                    }
+                }
+
+                if (candidates.length === 0) {
+                    resolveError += `manifest: no dates found; `;
                 } else {
                     candidates.sort((a, b) => b.date.localeCompare(a.date));
                     targetUrl = candidates[0].url;
@@ -441,6 +469,26 @@ export async function fetchLegislationArticle(
         } catch (e) {
             resolveError += `manifest fetch error: ${e}; `;
         }
+    }
+
+    // Last resort: probe a few strategic dates with HEAD requests
+    if (!targetUrl) {
+        const BASE = "https://repository.officiele-overheidspublicaties.nl";
+        const now = new Date();
+        const probeDates: string[] = [];
+        for (let i = 0; i < 8; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            probeDates.push(d.toISOString().slice(0, 10));
+        }
+        probeDates.push(`${now.getFullYear() - 1}-07-01`, `${now.getFullYear() - 1}-01-01`);
+        for (const date of probeDates) {
+            const tryUrl = `${BASE}/bwb/${bwb_id}/${date}/xml/${bwb_id}_${date}.xml`;
+            try {
+                const r = await fetch(tryUrl, { method: "HEAD", signal: AbortSignal.timeout(4_000) });
+                if (r.ok) { targetUrl = tryUrl; break; }
+            } catch { /* try next date */ }
+        }
+        if (!targetUrl) resolveError += `probe: no URL found after trying ${probeDates.length} dates; `;
     }
 
     // Fetch the XML

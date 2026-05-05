@@ -93,7 +93,8 @@ export function LegalPanel({ citation }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [citation.ecli, citation.article, citation.type, citation.external_url, citation.xml_url]);
 
-    // Scroll to the <mark> element after ReactMarkdown renders it
+    // Scroll to the <mark> element after ReactMarkdown renders it.
+    // Also fires when citation.quote changes (same arrest, different passage).
     useEffect(() => {
         if (!fullText) return;
         const timer = setTimeout(() => {
@@ -101,7 +102,7 @@ export function LegalPanel({ citation }: Props) {
             mark?.scrollIntoView({ behavior: "smooth", block: "center" });
         }, 120);
         return () => clearTimeout(timer);
-    }, [fullText]);
+    }, [fullText, citation.quote]);
 
     // Manual load for case law (triggered by the button).
     const loadCaseLaw = async () => {
