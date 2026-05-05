@@ -401,18 +401,23 @@ export async function fetchLegislationArticle(
 ): Promise<{ bwb_id: string; article: string; text: string; url: string; xml_url: string }> {
     // Resolve XML URL: use provided url, then SRU lookup, then manifest as last resort
     let targetUrl = xml_url ?? "";
+    let resolveError = "";
+
     if (!targetUrl) {
         try {
             targetUrl = await resolveBwbXmlUrl(bwb_id);
-        } catch {
-            // fall through to manifest
+        } catch (e) {
+            resolveError += `SRU: ${e}; `;
         }
     }
+
     if (!targetUrl) {
         const manifestUrl = `https://repository.officiele-overheidspublicaties.nl/bwb/${bwb_id}/manifest.xml`;
         try {
             const mResp = await fetch(manifestUrl, { signal: AbortSignal.timeout(10_000) });
-            if (mResp.ok) {
+            if (!mResp.ok) {
+                resolveError += `manifest HTTP ${mResp.status}; `;
+            } else {
                 // Strip namespace prefixes so extractTag works regardless of ns2:/ns3: etc.
                 const mXml = (await mResp.text()).replace(/<(\/?)\w+:/g, "<$1");
                 const entries: { date: string; file: string }[] = [];
@@ -426,15 +431,17 @@ export async function fetchLegislationArticle(
                     const naam = extractTag(entry, "Naam");
                     if (naam) entries.push({ date: vanaf, file: naam });
                 }
-                if (entries.length > 0) {
+                if (entries.length === 0) {
+                    resolveError += `manifest: no current entries found; `;
+                } else {
                     entries.sort((a, b) => b.date.localeCompare(a.date));
                     const file = entries[0].file;
                     const dateKey = file.replace(`${bwb_id}_`, "").replace(".xml", "");
                     targetUrl = `https://repository.officiele-overheidspublicaties.nl/bwb/${bwb_id}/${dateKey}/xml/${file}`;
                 }
             }
-        } catch {
-            // fall through
+        } catch (e) {
+            resolveError += `manifest fetch error: ${e}; `;
         }
     }
 
@@ -443,23 +450,32 @@ export async function fetchLegislationArticle(
     if (targetUrl) {
         try {
             const resp = await fetch(targetUrl, { signal: AbortSignal.timeout(20_000) });
-            if (resp.ok) lawText = await resp.text();
-        } catch {
-            // fall through
+            if (resp.ok) {
+                lawText = await resp.text();
+            } else {
+                resolveError += `XML fetch HTTP ${resp.status} from ${targetUrl}; `;
+            }
+        } catch (e) {
+            resolveError += `XML fetch error: ${e}; `;
         }
     }
     if (!lawText) {
-        throw new Error(`Kon ${bwb_id} niet ophalen — probeer het opnieuw of open de wet via de externe link`);
+        console.error(`[fetchLegislationArticle] ${bwb_id}: ${resolveError}`);
+        throw new Error(`Kon ${bwb_id} niet ophalen (${resolveError.slice(0, 200)})`);
     }
 
     // Strip tags to plain text for article extraction
     const plain = stripTags(lawText).replace(/\s+/g, " ");
 
-    // Search for the article by number
-    const patterns = [
-        new RegExp(`Artikel\\s+${article_number}\\b([\\s\\S]{0,4000})`, "i"),
-        new RegExp(`Art\\.\\s*${article_number}\\b([\\s\\S]{0,4000})`, "i"),
-    ];
+    // Handle book:article format (e.g. "6:162" → also try "162")
+    const baseNum = article_number.includes(":") ? article_number.split(":").pop()! : article_number;
+    const numsToTry = article_number !== baseNum ? [article_number, baseNum] : [article_number];
+
+    const patterns = numsToTry.flatMap((num) => [
+        new RegExp(`Artikel\\s+${num}\\b([\\s\\S]{0,4000})`, "i"),
+        new RegExp(`Art\\.\\s*${num}\\b([\\s\\S]{0,4000})`, "i"),
+    ]);
+
     for (const re of patterns) {
         const match = plain.match(re);
         if (match) {
@@ -472,7 +488,7 @@ export async function fetchLegislationArticle(
                 bwb_id,
                 article: article_number,
                 text: `Artikel ${article_number}\n${articleText.slice(0, 3000)}`,
-                url: `https://wetten.overheid.nl/${bwb_id}/${today}#Artikel${article_number}`,
+                url: `https://wetten.overheid.nl/${bwb_id}/${today}#Artikel${baseNum}`,
                 xml_url: targetUrl,
             };
         }
