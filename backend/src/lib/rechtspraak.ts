@@ -394,6 +394,66 @@ async function resolveBwbXmlUrl(bwb_id: string): Promise<string> {
     throw new Error(`Geen actuele XML gevonden voor ${bwb_id}`);
 }
 
+// Find the <artikel> block whose <nr> matches baseNum (exact, ignoring whitespace).
+function findArticleXml(lawXml: string, baseNum: string): string | null {
+    const escaped = baseNum.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Match <artikel ...>...</artikel> that contains <nr>baseNum</nr>
+    const pat = new RegExp(
+        `<artikel[^>]*>[\\s\\S]*?<nr[^>]*>\\s*${escaped}\\s*<\\/nr>[\\s\\S]*?<\\/artikel>`,
+        "i",
+    );
+    return lawXml.match(pat)?.[0] ?? null;
+}
+
+// Convert a <artikel> XML fragment to markdown with one blank line per lid.
+function formatArticleXml(articleXml: string, articleNum: string): string {
+    const lines: string[] = [];
+
+    // Opschrift (title of the article)
+    const opschrift = decodeXml(stripTags(extractTag(articleXml, "opschrift"))).trim();
+    lines.push(`**Artikel ${articleNum}**${opschrift ? ` — ${opschrift}` : ""}`);
+
+    // Extract <lid> elements
+    const lidPat = /<lid[^>]*>([\s\S]*?)<\/lid>/gi;
+    let lidMatch: RegExpExecArray | null;
+    let hasLids = false;
+
+    while ((lidMatch = lidPat.exec(articleXml)) !== null) {
+        hasLids = true;
+        const lidXml = lidMatch[1];
+
+        // Get lid number, then strip it from the text
+        const lidnrMatch = lidXml.match(/<lidnr[^>]*>([\s\S]*?)<\/lidnr>/i);
+        const lidnr = lidnrMatch ? decodeXml(stripTags(lidnrMatch[1])).trim() : "";
+        const bodyXml = lidXml.replace(/<lidnr[^>]*>[\s\S]*?<\/lidnr>/i, "");
+
+        // Flatten body: keep list items on separate lines, paragraphs joined
+        let text = bodyXml
+            .replace(/<listitem[^>]*>([\s\S]*?)<\/listitem>/gi, (_, c) => `\n- ${decodeXml(stripTags(c)).replace(/\s+/g, " ").trim()}`)
+            .replace(/<[^>]+>/g, " ");
+        text = decodeXml(text).replace(/[ \t]+/g, " ").replace(/\n /g, "\n").trim();
+
+        lines.push("");
+        lines.push(lidnr ? `**${lidnr}** ${text}` : text);
+    }
+
+    // No <lid> elements — just dump all paragraph text
+    if (!hasLids) {
+        const alPat = /<al[^>]*>([\s\S]*?)<\/al>/gi;
+        let alMatch: RegExpExecArray | null;
+        while ((alMatch = alPat.exec(articleXml)) !== null) {
+            const t = decodeXml(stripTags(alMatch[1])).replace(/\s+/g, " ").trim();
+            if (t) { lines.push(""); lines.push(t); }
+        }
+        if (!lines.some((l) => l && !l.startsWith("**"))) {
+            lines.push("");
+            lines.push(decodeXml(stripTags(articleXml)).replace(/\s+/g, " ").trim());
+        }
+    }
+
+    return lines.join("\n").trim();
+}
+
 export async function fetchLegislationArticle(
     bwb_id: string,
     article_number: string,
@@ -510,31 +570,39 @@ export async function fetchLegislationArticle(
         throw new Error(`Kon ${bwb_id} niet ophalen (${resolveError.slice(0, 200)})`);
     }
 
-    // Strip tags to plain text for article extraction
-    const plain = stripTags(lawText).replace(/\s+/g, " ");
-
     // Handle book:article format (e.g. "6:162" → also try "162")
     const baseNum = article_number.includes(":") ? article_number.split(":").pop()! : article_number;
-    const numsToTry = article_number !== baseNum ? [article_number, baseNum] : [article_number];
 
+    // Find the <artikel> element whose <nr> matches the article number
+    const articleXml = findArticleXml(lawText, baseNum);
+    if (articleXml) {
+        return {
+            bwb_id,
+            article: article_number,
+            text: formatArticleXml(articleXml, article_number),
+            url: `https://wetten.overheid.nl/${bwb_id}`,
+            xml_url: targetUrl,
+        };
+    }
+
+    // Fallback: plain-text search (older XML formats)
+    const plain = stripTags(lawText).replace(/\s+/g, " ");
+    const numsToTry = article_number !== baseNum ? [article_number, baseNum] : [article_number];
     const patterns = numsToTry.flatMap((num) => [
         new RegExp(`Artikel\\s+${num}\\b([\\s\\S]{0,4000})`, "i"),
         new RegExp(`Art\\.\\s*${num}\\b([\\s\\S]{0,4000})`, "i"),
     ]);
-
     for (const re of patterns) {
         const match = plain.match(re);
         if (match) {
-            // Trim at next article boundary
             const raw = match[1];
             const nextArticle = raw.search(/\bArtikel\s+\d/i);
             const articleText = nextArticle > 100 ? raw.slice(0, nextArticle).trim() : raw.trim();
-            const today = new Date().toISOString().slice(0, 10);
             return {
                 bwb_id,
                 article: article_number,
-                text: `Artikel ${article_number}\n${articleText.slice(0, 3000)}`,
-                url: `https://wetten.overheid.nl/${bwb_id}/${today}#Artikel${baseNum}`,
+                text: `Artikel ${article_number}\n\n${articleText.slice(0, 3000)}`,
+                url: `https://wetten.overheid.nl/${bwb_id}`,
                 xml_url: targetUrl,
             };
         }
