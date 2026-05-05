@@ -195,6 +195,8 @@ export interface MikeCitationAnnotation {
   court?: string;
   /** Case law — judgment date (YYYY-MM-DD) */
   judgment_date?: string;
+  /** Case law — rechtsoverweging number (e.g. "3.6") */
+  ro?: string;
   /** Case law / legislation — display title */
   title?: string;
   /** Legislation — article reference */
@@ -230,10 +232,16 @@ export function expandCitationToEntries(
   return [{ page: pageNum, quote: a.quote }];
 }
 
-/** Format the page(s) of a citation for display, e.g. "Page 3" or "Page 41-42". */
+/** Format the location of a citation for display. */
 export function formatCitationPage(a: MikeCitationAnnotation): string {
-  if (typeof a.page === "string") return `Page ${a.page}`;
-  return `Page ${a.page}`;
+  if (a.type === "case_law") {
+    return a.ro ? `r.o. ${a.ro}` : (a.title ?? a.ecli ?? "Uitspraak");
+  }
+  if (a.type === "legislation") {
+    return a.article ?? a.title ?? "Wetgeving";
+  }
+  if (typeof a.page === "string") return `Pagina ${a.page}`;
+  return typeof a.page === "number" ? `Pagina ${a.page}` : "";
 }
 
 /** Produce a reader-friendly version of the quote (replaces [[PAGE_BREAK]] with "..."). */

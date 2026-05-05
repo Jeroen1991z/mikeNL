@@ -148,13 +148,17 @@ SEARCH STRATEGY:
 4. Synthesise: cite both the relevant cases and the statutory text in your answer
 
 CITING CASE LAW AND LEGISLATION:
-Use the same [N] inline marker system as for documents. After your response, include case law and legislation entries in the <CITATIONS> block alongside any document citations:
+Use the same [N] inline marker system as for documents. Place the [N] marker IMMEDIATELY after the legal reference itself — directly after the ECLI code, article number, or "BW"/"Rv" abbreviation, NOT after words like "geldt dat" or at the end of the sentence.
+
+After your response, include case law and legislation entries in the <CITATIONS> block alongside any document citations:
 
 For case law:
-{"ref": N, "type": "case_law", "ecli": "ECLI:NL:HR:2020:1234", "title": "HR 1 januari 2020", "court": "Hoge Raad", "date": "2020-01-01", "quote": "exact relevant passage from the judgment"}
+{"ref": N, "type": "case_law", "ecli": "ECLI:NL:HR:2020:1234", "title": "HR 1 januari 2020", "court": "Hoge Raad", "date": "2020-01-01", "ro": "3.6", "quote": "exact relevant passage from the judgment"}
+- "ro" is the rechtsoverweging (consideration) number where the quoted passage appears, e.g. "3.6" or "4.2.1". Include it whenever the full judgment text was fetched. Omit if unknown.
 
 For legislation:
-{"ref": N, "type": "legislation", "title": "Burgerlijk Wetboek", "article": "art. 7:610 BW", "url": "https://wetten.overheid.nl/BWBR0005290", "quote": "text of the relevant article or provision"}
+{"ref": N, "type": "legislation", "title": "Burgerlijk Wetboek", "article": "art. 6:162 BW", "url": "<url from fetch_legislation_article result>", "quote": "text of the relevant article or provision"}
+- Always use the URL returned by fetch_legislation_article (it contains the correct BWB ID and article anchor). Do not construct legislation URLs yourself.
 
 QUALITY STANDARDS (Harvey / Legora level):
 - Always cite primary sources; never state Dutch law from memory alone
@@ -589,7 +593,7 @@ export const TOOLS = [
 
 type ParsedCitation =
     | { kind: "doc"; ref: number; doc_id: string; page: number | string; quote: string }
-    | { kind: "case_law"; ref: number; ecli: string; title?: string; court?: string; date?: string; quote: string; external_url: string }
+    | { kind: "case_law"; ref: number; ecli: string; title?: string; court?: string; date?: string; ro?: string; quote: string; external_url: string }
     | { kind: "legislation"; ref: number; title: string; article?: string; url?: string; quote: string };
 
 function normalizeCitation(raw: unknown): ParsedCitation | null {
@@ -608,6 +612,7 @@ function normalizeCitation(raw: unknown): ParsedCitation | null {
             title: typeof c.title === "string" ? c.title : undefined,
             court: typeof c.court === "string" ? c.court : undefined,
             date: typeof c.date === "string" ? c.date : undefined,
+            ro: typeof c.ro === "string" ? c.ro : undefined,
             quote: c.quote,
             external_url: `https://uitspraken.rechtspraak.nl/details?id=${encodeURIComponent(ecli)}`,
         };
@@ -2906,6 +2911,7 @@ export function extractAnnotations(
                 title: c.title,
                 court: c.court,
                 judgment_date: c.date,
+                ro: c.ro,
                 quote: c.quote,
                 external_url: c.external_url,
             };

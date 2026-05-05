@@ -341,11 +341,12 @@ export async function fetchLegislationArticle(
             const raw = match[1];
             const nextArticle = raw.search(/\bArtikel\s+\d/i);
             const articleText = nextArticle > 100 ? raw.slice(0, nextArticle).trim() : raw.trim();
+            const today = new Date().toISOString().slice(0, 10);
             return {
                 bwb_id,
                 article: article_number,
                 text: `Artikel ${article_number}\n${articleText.slice(0, 3000)}`,
-                url: `https://wetten.overheid.nl/${bwb_id}#Artikel${article_number}`,
+                url: `https://wetten.overheid.nl/${bwb_id}/${today}#Artikel${article_number}`,
             };
         }
     }
