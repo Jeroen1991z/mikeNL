@@ -5,6 +5,7 @@ import {
     DEFAULT_TABULAR_MODEL,
     type UserApiKeys,
 } from "./llm";
+import { decryptApiKey } from "./encryption";
 
 export type UserModelSettings = {
     title_model: string;
@@ -34,8 +35,8 @@ export async function getUserModelSettings(
         .single();
 
     const api_keys: UserApiKeys = {
-        claude: data?.claude_api_key ?? null,
-        gemini: data?.gemini_api_key ?? null,
+        claude: decryptApiKey(data?.claude_api_key ?? "") || null,
+        gemini: decryptApiKey(data?.gemini_api_key ?? "") || null,
     };
 
     return {
@@ -56,7 +57,7 @@ export async function getUserApiKeys(
         .eq("user_id", userId)
         .single();
     return {
-        claude: data?.claude_api_key ?? null,
-        gemini: data?.gemini_api_key ?? null,
+        claude: decryptApiKey(data?.claude_api_key ?? "") || null,
+        gemini: decryptApiKey(data?.gemini_api_key ?? "") || null,
     };
 }
