@@ -347,20 +347,60 @@ export async function searchLegislation(
 // Legislation full-text fetch — BWB XML article extraction
 // ---------------------------------------------------------------------------
 
+// Resolve the latest current XML URL for a BWB ID via the SRU search service.
+// This is more reliable than the manifest endpoint and avoids scraping wetten.overheid.nl.
+async function resolveBwbXmlUrl(bwb_id: string): Promise<string> {
+    const params = new URLSearchParams({
+        operation: "searchRetrieve",
+        version: "1.2",
+        "x-connection": "BWB",
+        query: `overheidbwb.identifier = "${bwb_id}"`,
+        maximumRecords: "5",
+    });
+    const resp = await fetch(`${WETTEN_SRU_BASE}?${params}`, {
+        signal: AbortSignal.timeout(12_000),
+    });
+    if (!resp.ok) throw new Error(`SRU lookup failed: HTTP ${resp.status}`);
+    const xml = await resp.text();
+
+    // Pick the record with the latest geldigheidsperiode_startdatum that is still current
+    let bestDate = "";
+    let bestUrl = "";
+    const recordRe = /<record[^>]*>([\s\S]*?)<\/record>/g;
+    let m: RegExpExecArray | null;
+    while ((m = recordRe.exec(xml)) !== null) {
+        const rec = m[1];
+        const locatie = extractTag(rec, "overheidbwb:locatie_toestand");
+        const startDate = extractTag(rec, "overheidbwb:geldigheidsperiode_startdatum").slice(0, 10);
+        if (locatie && startDate > bestDate) {
+            bestDate = startDate;
+            bestUrl = locatie;
+        }
+    }
+    if (!bestUrl) throw new Error(`No current XML found for ${bwb_id}`);
+    return bestUrl;
+}
+
 export async function fetchLegislationArticle(
     bwb_id: string,
     article_number: string,
     xml_url?: string,
 ): Promise<{ bwb_id: string; article: string; text: string; url: string }> {
-    // Try manifest to get latest version XML URL
+    // Resolve XML URL: use provided url, then SRU lookup, then manifest as last resort
     let targetUrl = xml_url ?? "";
+    if (!targetUrl) {
+        try {
+            targetUrl = await resolveBwbXmlUrl(bwb_id);
+        } catch {
+            // fall through to manifest
+        }
+    }
     if (!targetUrl) {
         const manifestUrl = `https://repository.officiele-overheidspublicaties.nl/bwb/${bwb_id}/manifest.xml`;
         try {
             const mResp = await fetch(manifestUrl, { signal: AbortSignal.timeout(10_000) });
             if (mResp.ok) {
                 const mXml = await mResp.text();
-                // Find entries with einddatum 9999 (currently valid) and pick the latest
                 const entries: { date: string; file: string }[] = [];
                 const entryRe = /<ns2:Uitwisselingsbestand[^>]*>([\s\S]*?)<\/ns2:Uitwisselingsbestand>/g;
                 let em: RegExpExecArray | null;
@@ -380,11 +420,11 @@ export async function fetchLegislationArticle(
                 }
             }
         } catch {
-            // fall through to wetten.overheid.nl approach
+            // fall through
         }
     }
 
-    // Fetch the XML (or fall back to wetten.overheid.nl HTML)
+    // Fetch the XML
     let lawText = "";
     if (targetUrl) {
         try {
@@ -395,12 +435,7 @@ export async function fetchLegislationArticle(
         }
     }
     if (!lawText) {
-        const today = new Date().toISOString().slice(0, 10);
-        const htmlResp = await fetch(`https://wetten.overheid.nl/${bwb_id}/${today}`, {
-            signal: AbortSignal.timeout(20_000),
-        });
-        if (!htmlResp.ok) throw new Error(`Could not fetch ${bwb_id}: HTTP ${htmlResp.status}`);
-        lawText = await htmlResp.text();
+        throw new Error(`Kon ${bwb_id} niet ophalen — probeer het opnieuw of open de wet via de externe link`);
     }
 
     // Strip tags to plain text for article extraction
