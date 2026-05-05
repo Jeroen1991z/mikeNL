@@ -132,6 +132,19 @@ export function ChatView({
      */
     const openCitation = useCallback(
         (citation: MikeCitationAnnotation) => {
+            if (citation.type === "case_law" || citation.type === "legislation") {
+                const id = citation.ecli ?? citation.article ?? String(citation.ref);
+                upsertTab({
+                    kind: "legal",
+                    id,
+                    documentId: id,
+                    filename: citation.title ?? citation.article ?? citation.ecli ?? "Bron",
+                    versionId: null,
+                    versionNumber: null,
+                    citation,
+                });
+                return;
+            }
             if (citation.external_url) {
                 window.open(citation.external_url, "_blank", "noopener,noreferrer");
                 return;
