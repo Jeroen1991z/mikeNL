@@ -181,9 +181,9 @@ export function LegalPanel({ citation }: Props) {
                             ref={containerRef}
                             className="prose prose-sm max-w-none font-serif text-gray-800
                                 prose-headings:font-sans prose-headings:font-semibold
-                                prose-h2:text-base prose-h2:mt-6 prose-h2:mb-2
-                                prose-h3:text-sm prose-h3:mt-4 prose-h3:mb-1
-                                prose-p:my-2 prose-p:leading-relaxed
+                                prose-h2:text-base prose-h2:mt-8 prose-h2:mb-3
+                                prose-h3:text-sm prose-h3:mt-5 prose-h3:mb-1
+                                prose-p:leading-relaxed prose-p:mb-4
                                 prose-strong:font-semibold
                                 prose-li:my-0.5"
                         >

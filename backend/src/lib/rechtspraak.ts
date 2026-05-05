@@ -245,11 +245,20 @@ export async function fetchCaseLaw(ecli: string, options: { display?: boolean } 
     );
     const court = creator || inferCourt(ecli);
 
-    // Extract body: prefer <uitspraak> or <conclusie>, fall back to full doc.
+    // Extract body: prefer <uitspraak> or <conclusie>. Tags may carry attributes.
+    // Fall back to stripping known metadata blocks from the full document.
     const bodyMatch =
-        xml.match(/<uitspraak>([\s\S]*?)<\/uitspraak>/i) ??
-        xml.match(/<conclusie>([\s\S]*?)<\/conclusie>/i);
-    const rawBody = bodyMatch ? bodyMatch[1] : xml;
+        xml.match(/<uitspraak[^>]*>([\s\S]*?)<\/uitspraak>/i) ??
+        xml.match(/<conclusie[^>]*>([\s\S]*?)<\/conclusie>/i);
+    let rawBody: string;
+    if (bodyMatch) {
+        rawBody = bodyMatch[1];
+    } else {
+        // Strip Dublin Core / OAI metadata elements before falling back
+        rawBody = xml
+            .replace(/<(?:dcterms?|oa)[^:]*:[^>]+>[\s\S]*?<\/(?:dcterms?|oa)[^:]*:[^>]+>/gi, "")
+            .replace(/<(?:identifier|modified|creator|subject|publisher|language|format|type|source|rights|inhoudsindicatie)[^>]*>[\s\S]*?<\/(?:identifier|modified|creator|subject|publisher|language|format|type|source|rights|inhoudsindicatie)>/gi, "");
+    }
 
     // For display: convert XML to markdown (preserving structure). For LLM: plain text, capped.
     const text = options.display
