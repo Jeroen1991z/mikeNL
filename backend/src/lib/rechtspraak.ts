@@ -394,15 +394,34 @@ async function resolveBwbXmlUrl(bwb_id: string): Promise<string> {
     throw new Error(`Geen actuele XML gevonden voor ${bwb_id}`);
 }
 
-// Find the <artikel> block whose <nr> matches baseNum (exact, ignoring whitespace).
+// Find the <artikel> block whose <nr> matches baseNum.
+// Works by locating <nr>baseNum</nr>, walking backwards to find its
+// enclosing <artikel> opener, then forward to find the matching </artikel>.
 function findArticleXml(lawXml: string, baseNum: string): string | null {
     const escaped = baseNum.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    // Match <artikel ...>...</artikel> that contains <nr>baseNum</nr>
-    const pat = new RegExp(
-        `<artikel[^>]*>[\\s\\S]*?<nr[^>]*>\\s*${escaped}\\s*<\\/nr>[\\s\\S]*?<\\/artikel>`,
-        "i",
-    );
-    return lawXml.match(pat)?.[0] ?? null;
+    const nrPat = new RegExp(`<nr[^>]*>\\s*${escaped}\\s*<\\/nr>`, "i");
+    const nrMatch = nrPat.exec(lawXml);
+    if (!nrMatch) return null;
+
+    // Walk backwards from the <nr> to find the nearest <artikel> opener
+    const before = lawXml.slice(0, nrMatch.index);
+    const artikelStart = before.lastIndexOf("<artikel");
+    if (artikelStart === -1) return null;
+
+    // Walk forward tracking nesting to find the matching </artikel>
+    let depth = 0;
+    const tagPat = /<\/?artikel[^>]*>/gi;
+    tagPat.lastIndex = artikelStart;
+    let m: RegExpExecArray | null;
+    while ((m = tagPat.exec(lawXml)) !== null) {
+        if (m[0].startsWith("</")) {
+            depth--;
+            if (depth === 0) return lawXml.slice(artikelStart, m.index + m[0].length);
+        } else {
+            depth++;
+        }
+    }
+    return null;
 }
 
 // Convert a <artikel> XML fragment to markdown with one blank line per lid.
