@@ -163,8 +163,6 @@ export interface MikeMessage {
 export interface SearchSources {
   rechtspraak?: boolean;  // rechtspraak.nl case law, default true
   wetten?: boolean;       // wetten.overheid.nl legislation, default true
-  mvt?: boolean;          // Memorie van Toelichting, default false
-  internet?: boolean;     // AI general knowledge, default true
 }
 
 export interface CitationQuote {
