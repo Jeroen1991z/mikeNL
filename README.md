@@ -1,6 +1,14 @@
-# Mike
+# MikeNL
 
-Open-source release containing the Mike frontend and backend.
+Open-source release containing the MikeNL frontend and backend. MikeNL is a Dutch-focused legal AI assistant, forked from Will Chen's Mike (https://github.com/willchen96/mike)  — an open-source recreation of Harvey and Legora built in two weeks. Will's original work forms the entire foundation of this project.
+
+On top of that base, MikeNL adds:
+
+- Direct integration with rechtspraak.nl — search and retrieve published Dutch court judgments
+- Direct integration with wetten.overheid.nl — access all articles from Dutch legislation including the Burgerlijk Wetboek
+- Side panel with passage highlighting — opens the full judgment or statutory article and marks the cited passage in yellow
+
+- MikeNL also incorporates redline/tracked-changes extraction from Jamie Tso's fork (https://github.com/jamietso/mike-redline), which adds support for surfacing    insertions, deletions, and comment bubbles from redlined DOCX and PDF documents.
 
 ## Contents
 
