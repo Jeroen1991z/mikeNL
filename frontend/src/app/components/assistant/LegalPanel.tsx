@@ -14,8 +14,8 @@ interface Props {
 
 /**
  * Find the start/end range of a quote in text.
- * Tries exact match, then case-insensitive, then splits on [...] markers and
- * finds the span from the first segment to the last.
+ * Tries exact match, then case-insensitive, then [...] segment spanning,
+ * then a fuzzy word-overlap sliding window for AI paraphrases.
  */
 function findQuoteRange(text: string, quote: string): { start: number; end: number } | null {
     // 1. Exact match
@@ -32,18 +32,57 @@ function findQuoteRange(text: string, quote: string): { start: number; end: numb
         .split(/\s*\[\.{2,3}\]\s*|\s*…\s*/)
         .map((s) => s.trim())
         .filter((s) => s.length >= 8);
-    if (segments.length < 2) return null;
+    if (segments.length >= 2) {
+        const first = segments[0].toLowerCase();
+        const last = segments[segments.length - 1].toLowerCase();
+        const startIdx = lower.indexOf(first);
+        if (startIdx !== -1) {
+            const endSearch = lower.indexOf(last, startIdx + first.length);
+            if (endSearch !== -1) return { start: startIdx, end: endSearch + last.length };
+        }
+    }
 
-    const first = segments[0].toLowerCase();
-    const last = segments[segments.length - 1].toLowerCase();
+    // 4. Fuzzy word-overlap sliding window — catches single-word paraphrases.
+    // Normalise both strings to word tokens (lowercase, punctuation → space).
+    // The positions in normText map 1:1 to text (same-length char substitution).
+    const norm = (s: string) => s.toLowerCase().replace(/[^\w\s]/g, " ");
+    const normText = norm(text);
+    const quoteWords = norm(quote).split(/\s+/).filter(Boolean);
+    const qLen = quoteWords.length;
+    if (qLen < 5) return null;
 
-    const startIdx = lower.indexOf(first);
-    if (startIdx === -1) return null;
+    // Build an array of {word, start, end} token positions from the text.
+    const tokens: { word: string; start: number; end: number }[] = [];
+    const wordRe = /\S+/g;
+    let m: RegExpExecArray | null;
+    while ((m = wordRe.exec(normText)) !== null) {
+        tokens.push({ word: m[0], start: m.index, end: m.index + m[0].length });
+    }
 
-    const endSearch = lower.indexOf(last, startIdx + first.length);
-    if (endSearch === -1) return null;
+    const quoteSet = new Set(quoteWords);
+    let bestScore = 0;
+    let bestStart = -1;
+    let bestEnd = -1;
 
-    return { start: startIdx, end: endSearch + last.length };
+    for (let i = 0; i <= tokens.length - qLen; i++) {
+        let matches = 0;
+        for (let j = 0; j < qLen; j++) {
+            if (quoteSet.has(tokens[i + j].word)) matches++;
+        }
+        const score = matches / qLen;
+        if (score > bestScore) {
+            bestScore = score;
+            bestStart = tokens[i].start;
+            bestEnd = tokens[i + qLen - 1].end;
+        }
+    }
+
+    // Require ≥75% word overlap to avoid false positives in long legal texts.
+    if (bestScore >= 0.75 && bestStart !== -1) {
+        return { start: bestStart, end: bestEnd };
+    }
+
+    return null;
 }
 
 export function LegalPanel({ citation }: Props) {
