@@ -49,9 +49,14 @@ app.use(
   },
 );
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`MikeNL backend running on port ${PORT}`);
   console.log(`  SUPABASE_URL: ${process.env.SUPABASE_URL ? "set" : "MISSING"}`);
   console.log(`  SUPABASE_SECRET_KEY: ${process.env.SUPABASE_SECRET_KEY ? "set (starts with " + (process.env.SUPABASE_SECRET_KEY ?? "").slice(0, 10) + "...)" : "MISSING"}`);
   console.log(`  FRONTEND_URL: ${process.env.FRONTEND_URL ?? "(not set)"}`);
 });
+
+// Increase timeouts to support long-running streaming responses.
+// Default Node.js socket timeout (5s) is too short for large AI outputs.
+server.keepAliveTimeout = 120_000;
+server.headersTimeout = 125_000;

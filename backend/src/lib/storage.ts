@@ -36,6 +36,10 @@ export const storageEnabled = Boolean(
   process.env.R2_SECRET_ACCESS_KEY,
 );
 
+// In-memory fallback used when R2 is not configured (e.g. local dev).
+// Files survive only for the lifetime of the server process.
+const memoryStore = new Map<string, Buffer>();
+
 // ---------------------------------------------------------------------------
 // Upload
 // ---------------------------------------------------------------------------
@@ -45,7 +49,10 @@ export async function uploadFile(
   content: ArrayBuffer,
   contentType: string,
 ): Promise<void> {
-  if (!storageEnabled) return;
+  if (!storageEnabled) {
+    memoryStore.set(key, Buffer.from(content));
+    return;
+  }
   const client = getClient();
   await client.send(
     new PutObjectCommand({
@@ -62,7 +69,11 @@ export async function uploadFile(
 // ---------------------------------------------------------------------------
 
 export async function downloadFile(key: string): Promise<ArrayBuffer | null> {
-  if (!storageEnabled) return null;
+  if (!storageEnabled) {
+    const buf = memoryStore.get(key);
+    if (!buf) return null;
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  }
   try {
     const client = getClient();
     const response = await client.send(
