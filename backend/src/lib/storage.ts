@@ -45,6 +45,7 @@ export async function uploadFile(
   content: ArrayBuffer,
   contentType: string,
 ): Promise<void> {
+  if (!storageEnabled) return;
   const client = getClient();
   await client.send(
     new PutObjectCommand({
